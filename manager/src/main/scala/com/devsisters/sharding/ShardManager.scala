@@ -159,10 +159,10 @@ class ShardManager(
 }
 
 object ShardManager {
-  val live: ZLayer[PodsHealth with Pods with Storage with Config, Throwable, ShardManager] =
+  val live: ZLayer[PodsHealth with Pods with Storage with ManagerConfig, Throwable, ShardManager] =
     ZLayer {
       for {
-        config             <- ZIO.service[Config]
+        config             <- ZIO.service[ManagerConfig]
         stateRepository    <- ZIO.service[Storage]
         healthApi          <- ZIO.service[PodsHealth]
         podApi             <- ZIO.service[Pods]

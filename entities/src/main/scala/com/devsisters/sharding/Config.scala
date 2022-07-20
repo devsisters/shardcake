@@ -7,6 +7,5 @@ case class Config(
   selfHost: String,
   shardingPort: Int,
   shardManagerUri: Uri,
-  serverVersion: String,
-  maxInboundMessageSize: Int
+  serverVersion: String
 )

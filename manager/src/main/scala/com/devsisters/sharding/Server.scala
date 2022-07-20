@@ -8,9 +8,9 @@ import zhttp.service.{ Server => ZServer }
 import zio._
 
 object Server {
-  val run: RIO[ShardManager with Config, Nothing] =
+  val run: RIO[ShardManager with ManagerConfig, Nothing] =
     for {
-      config      <- ZIO.service[Config]
+      config      <- ZIO.service[ManagerConfig]
       interpreter <- (GraphQLApi.api @@ printErrors).interpreter
       nothing     <- ZServer
                        .start(

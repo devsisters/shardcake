@@ -3,11 +3,13 @@ package com.devsisters.sharding
 import com.devsisters.sharding.Messenger.Address
 import com.devsisters.sharding.Sharding.EntityState
 import com.devsisters.sharding.errors.{ AskTimeoutException, EntityNotManagedByThisPod, PodUnavailable }
-import com.devsisters.sharding.interfaces.ShardClient.BinaryMessage
-import com.devsisters.sharding.interfaces.{ Serialization, ShardClient, Storage }
+import com.devsisters.sharding.interfaces.Pods.BinaryMessage
+import com.devsisters.sharding.interfaces.{ Pods, Serialization, Storage }
 import com.devsisters.sharding.internal.EntityManager
 import zio._
 import zio.stream.ZStream
+
+import java.time.OffsetDateTime
 
 class Sharding(
   address: PodAddress,
@@ -15,10 +17,11 @@ class Sharding(
   shardAssignments: Ref[Map[ShardId, PodAddress]],
   singletons: Ref.Synchronized[List[(String, UIO[Nothing], Option[Fiber[Nothing, Nothing]])]],
   entityStates: Ref.Synchronized[Map[String, EntityState]],
-  promises: Ref.Synchronized[Map[String, Promise[Throwable, Option[Any]]]], // promise for each pending reply
+  promises: Ref.Synchronized[Map[String, Promise[Throwable, Option[Any]]]], // promise for each pending reply,
+  lastUnhealthyNodeReported: Ref[OffsetDateTime],
   isShuttingDownRef: Ref[Boolean],
   shardManager: ShardManagerClient,
-  shardClient: ShardClient,
+  pods: Pods,
   storage: Storage
 ) { self =>
   def getShardId(entityId: String): ShardId =
@@ -224,8 +227,18 @@ class Sharding(
                                 serialization
                                   .encode(msg)
                                   .flatMap(bytes =>
-                                    shardClient
+                                    pods
                                       .sendMessage(BinaryMessage(entityId, entityType.value, bytes), pod)
+                                      .tapError {
+                                        ZIO.whenCase(_) { case PodUnavailable(pod) =>
+                                          val notify = Clock.currentDateTime.flatMap(cdt =>
+                                            lastUnhealthyNodeReported
+                                              .updateAndGet(old => if (old.plusSeconds(5) isBefore cdt) cdt else old)
+                                              .map(_ isEqual cdt)
+                                          )
+                                          ZIO.whenZIO(notify)(shardManager.notifyUnhealthyPod(pod).forkDaemon)
+                                        }
+                                      }
                                       .flatMap(ZIO.foreach(_)(serialization.decode))
                                   )
                               }
@@ -244,40 +257,43 @@ class Sharding(
 }
 
 object Sharding {
-  val live: ZLayer[ShardClient with ShardManagerClient with Storage with Config, Throwable, Sharding] =
+  val live: ZLayer[Pods with ShardManagerClient with Storage with Config, Throwable, Sharding] =
     ZLayer.scoped {
       for {
-        config       <- ZIO.service[Config]
-        shardClient  <- ZIO.service[ShardClient]
-        shardManager <- ZIO.service[ShardManagerClient]
-        storage      <- ZIO.service[Storage]
-        shardsCache  <- Ref.make(Map.empty[ShardId, PodAddress])
-        singletons   <- Ref.Synchronized
-                          .make[List[(String, UIO[Nothing], Option[Fiber[Nothing, Nothing]])]](Nil)
-                          .withFinalizer(
-                            _.get.flatMap(singletons =>
-                              ZIO.foreach(singletons) {
-                                case (_, _, Some(fiber)) => fiber.interrupt
-                                case _                   => ZIO.unit
-                              }
-                            )
-                          )
-        entityStates <- Ref.Synchronized.make[Map[String, EntityState]](Map())
-        promises     <- Ref.Synchronized.make[Map[String, Promise[Throwable, Option[Any]]]](Map())
-        shuttingDown <- Ref.make(false)
-        sharding      = new Sharding(
-                          PodAddress(config.selfHost, config.shardingPort),
-                          config.numberOfShards,
-                          shardsCache,
-                          singletons,
-                          entityStates,
-                          promises,
-                          shuttingDown,
-                          shardManager,
-                          shardClient,
-                          storage
-                        )
-        _            <- sharding.refreshAssignments
+        config                    <- ZIO.service[Config]
+        pods                      <- ZIO.service[Pods]
+        shardManager              <- ZIO.service[ShardManagerClient]
+        storage                   <- ZIO.service[Storage]
+        shardsCache               <- Ref.make(Map.empty[ShardId, PodAddress])
+        singletons                <- Ref.Synchronized
+                                       .make[List[(String, UIO[Nothing], Option[Fiber[Nothing, Nothing]])]](Nil)
+                                       .withFinalizer(
+                                         _.get.flatMap(singletons =>
+                                           ZIO.foreach(singletons) {
+                                             case (_, _, Some(fiber)) => fiber.interrupt
+                                             case _                   => ZIO.unit
+                                           }
+                                         )
+                                       )
+        entityStates              <- Ref.Synchronized.make[Map[String, EntityState]](Map())
+        promises                  <- Ref.Synchronized.make[Map[String, Promise[Throwable, Option[Any]]]](Map())
+        cdt                       <- Clock.currentDateTime
+        lastUnhealthyNodeReported <- Ref.make(cdt)
+        shuttingDown              <- Ref.make(false)
+        sharding                   = new Sharding(
+                                       PodAddress(config.selfHost, config.shardingPort),
+                                       config.numberOfShards,
+                                       shardsCache,
+                                       singletons,
+                                       entityStates,
+                                       promises,
+                                       lastUnhealthyNodeReported,
+                                       shuttingDown,
+                                       shardManager,
+                                       pods,
+                                       storage
+                                     )
+        _                         <- sharding.refreshAssignments
       } yield sharding
     }
 

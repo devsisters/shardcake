@@ -1,7 +1,7 @@
 package com.devsisters.sharding
 
 import com.devsisters.sharding.errors.EntityNotManagedByThisPod
-import com.devsisters.sharding.interfaces.ShardClient.BinaryMessage
+import com.devsisters.sharding.interfaces.Pods.BinaryMessage
 import com.devsisters.sharding.protobuf.sharding.ZioSharding.ZShardingService
 import com.devsisters.sharding.protobuf.sharding._
 import com.google.protobuf.ByteString
