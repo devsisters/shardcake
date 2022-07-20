@@ -24,7 +24,7 @@ class Sharding(
   pods: Pods,
   storage: Storage
 ) { self =>
-  def getShardId(entityId: String): ShardId =
+  private[sharding] def getShardId(entityId: String): ShardId =
     math.abs(entityId.hashCode % numberOfShards) + 1
 
   val register: Task[Unit] =
@@ -74,7 +74,7 @@ class Sharding(
   def registerSingleton(name: String, run: UIO[Nothing]): UIO[Unit] =
     singletons.update(list => (name, run, None) :: list) *> startSingletonsIfNeeded
 
-  def assign(shards: Set[ShardId]): UIO[Unit] =
+  private[sharding] def assign(shards: Set[ShardId]): UIO[Unit] =
     ZIO
       .unlessZIO(isShuttingDown) {
         shardAssignments.update(shards.foldLeft(_) { case (map, shard) => map.updated(shard, address) }) *>
@@ -83,7 +83,7 @@ class Sharding(
       }
       .unit
 
-  def unassign(shards: Set[ShardId]): UIO[Unit] =
+  private[sharding] def unassign(shards: Set[ShardId]): UIO[Unit] =
     shardAssignments.update(shards.foldLeft(_) { case (map, shard) =>
       if (map.get(shard).contains(address)) map - shard else map
     }) *>
@@ -96,7 +96,7 @@ class Sharding(
       stopSingletonsIfNeeded <*
       ZIO.logDebug(s"Unassigned shards: $shards")
 
-  def isEntityOnLocalShards(entityId: String): UIO[Boolean] =
+  private[sharding] def isEntityOnLocalShards(entityId: String): UIO[Boolean] =
     for {
       shards <- shardAssignments.get
       shardId = getShardId(entityId)
@@ -106,7 +106,7 @@ class Sharding(
   def getNumberOfPods: UIO[Int] =
     shardAssignments.get.map(_.values.toSet.size)
 
-  val refreshAssignments: ZIO[Scope, Nothing, Unit] = {
+  private val refreshAssignments: ZIO[Scope, Nothing, Unit] = {
     val assignmentStream =
       ZStream.fromZIO(
         shardManager.getAssignments.map(_ -> true) // first, get the assignments from the shard manager directly
@@ -126,10 +126,10 @@ class Sharding(
     }.runDrain
   }.retry(Schedule.fixed(5 seconds)).interruptible.forkDaemon.withFinalizer(_.interrupt).unit
 
-  def isShuttingDown: UIO[Boolean] =
+  private[sharding] def isShuttingDown: UIO[Boolean] =
     isShuttingDownRef.get
 
-  def sendToLocalEntity(msg: BinaryMessage): Task[Option[Array[Byte]]] =
+  private[sharding] def sendToLocalEntity(msg: BinaryMessage): Task[Option[Array[Byte]]] =
     entityStates.get.flatMap(states =>
       ZIO
         .foreach(states.get(msg.entityType)) { state =>
@@ -142,7 +142,7 @@ class Sharding(
         .map(_.flatten)
     )
 
-  def initReply(id: String, promise: Promise[Throwable, Option[Any]], context: String): UIO[Unit] =
+  private[sharding] def initReply(id: String, promise: Promise[Throwable, Option[Any]], context: String): UIO[Unit] =
     promises.update(promises => promises.updated(id, promise)) <*
       promise.await
         .timeoutFail(new Exception(s"Promise was not completed in time. $context"))(12 seconds) // > ask timeout
