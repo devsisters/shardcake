@@ -1,26 +1,28 @@
 package com.devsisters.sharding
 
-import com.devsisters.sharding.interfaces.Serialization
-import com.devsisters.sharding.protobuf.sharding._
+import com.devsisters.sharding.errors.EntityNotManagedByThisPod
+import com.devsisters.sharding.interfaces.ShardClient.BinaryMessage
 import com.devsisters.sharding.protobuf.sharding.ZioSharding.ZShardingService
+import com.devsisters.sharding.protobuf.sharding._
 import com.google.protobuf.ByteString
 import io.grpc.{ Status, StatusException, StatusRuntimeException }
 import zio._
 
-trait ShardingService extends ZShardingService[Sharding with Serialization, Any] {
+trait GrpcShardingService extends ZShardingService[Sharding, Any] {
   def assignShards(request: AssignShardsRequest): ZIO[Sharding, Status, AssignShardsResponse] =
     ZIO.serviceWithZIO[Sharding](_.assign(request.shards.toSet)).as(AssignShardsResponse())
 
   def unassignShards(request: UnassignShardsRequest): ZIO[Sharding, Status, UnassignShardsResponse] =
     ZIO.serviceWithZIO[Sharding](_.unassign(request.shards.toSet)).as(UnassignShardsResponse())
 
-  def send(request: SendRequest): ZIO[Sharding with Serialization, Status, SendResponse] =
+  def send(request: SendRequest): ZIO[Sharding, Status, SendResponse] =
     ZIO
-      .serviceWithZIO[Serialization](_.decode(request.body.toByteArray))
-      .flatMap(msg => ZIO.serviceWithZIO[Sharding](_.hub.sendToLocalEntity(request.entityId, request.entityType, msg)))
-      .flatMap {
-        case None      => ZIO.succeed(ByteString.EMPTY)
-        case Some(res) => ZIO.serviceWithZIO[Serialization](_.encode(res).map(ByteString.copyFrom))
+      .serviceWithZIO[Sharding](
+        _.sendToLocalEntity(BinaryMessage(request.entityId, request.entityType, request.body.toByteArray))
+      )
+      .map {
+        case None      => ByteString.EMPTY
+        case Some(res) => ByteString.copyFrom(res)
       }
       .mapBoth(mapErrorToStatusWithInternalDetails, SendResponse(_))
       .timeoutFail(Status.ABORTED.withDescription("Timeout while handling sharding send grpc"))(10 seconds)

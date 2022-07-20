@@ -1,35 +1,39 @@
 package com.devsisters.sharding
 
-import com.devsisters.sharding.interfaces.Storage
-import com.devsisters.sharding.internal.ShardHub
-import zio.stream.ZStream
+import com.devsisters.sharding.Messenger.Address
+import com.devsisters.sharding.Sharding.EntityState
+import com.devsisters.sharding.errors.{ AskTimeoutException, EntityNotManagedByThisPod, PodUnavailable }
+import com.devsisters.sharding.interfaces.ShardClient.BinaryMessage
+import com.devsisters.sharding.interfaces.{ Serialization, ShardClient, Storage }
+import com.devsisters.sharding.internal.EntityManager
 import zio._
+import zio.stream.ZStream
 
 class Sharding(
   address: PodAddress,
   numberOfShards: Int,
   shardAssignments: Ref[Map[ShardId, PodAddress]],
   singletons: Ref.Synchronized[List[(String, UIO[Nothing], Option[Fiber[Nothing, Nothing]])]],
+  entityStates: Ref.Synchronized[Map[String, EntityState]],
+  promises: Ref.Synchronized[Map[String, Promise[Throwable, Option[Any]]]], // promise for each pending reply
   isShuttingDownRef: Ref[Boolean],
-  shardHub: ShardHub,
+  shardManager: ShardManagerClient,
   shardClient: ShardClient,
   storage: Storage
 ) { self =>
-  def hub: ShardHub = shardHub
-
   def getShardId(entityId: String): ShardId =
     math.abs(entityId.hashCode % numberOfShards) + 1
 
   val register: Task[Unit] =
     ZIO.logDebug(s"Registering pod $address to Shard Manager") *>
-      shardClient.register(address)
+      shardManager.register(address)
 
   val unregister: Task[Unit] =
     ZIO.logDebug(s"Stopping local entities") *>
       isShuttingDownRef.set(true) *>
-      shardHub.shutdown *>
+      entityStates.get.flatMap(states => ZIO.foreachDiscard(states.values)(_.entityManager.terminateAllEntities)) *>
       ZIO.logDebug(s"Unregistering pod $address to Shard Manager") *>
-      shardClient.unregister(address)
+      shardManager.unregister(address)
 
   private def isSingletonNode: UIO[Boolean] =
     // In theory, it would be better to start a single instance in kubernetes with a new role that is just for our singletons
@@ -81,36 +85,13 @@ class Sharding(
       if (map.get(shard).contains(address)) map - shard else map
     }) *>
       ZIO.logDebug(s"Unassigning shards: $shards") *>
-      shardHub.terminateShards(shards) *> // this will return once all shards are terminated
+      entityStates.get.flatMap(state =>
+        ZIO.foreachDiscard(state.values)(
+          _.entityManager.terminateEntitiesOnShards(shards) // this will return once all shards are terminated
+        )
+      ) *>
       stopSingletonsIfNeeded <*
       ZIO.logDebug(s"Unassigned shards: $shards")
-
-  def sendMessage(message: Message): Task[Option[Any]] = {
-    val shardId                    = getShardId(message.entityId)
-    def trySend: Task[Option[Any]] =
-      for {
-        shards   <- shardAssignments.get
-        pod       = shards.get(shardId)
-        response <- pod match {
-                      case Some(pod) =>
-                        val send =
-                          if (pod == address) {
-                            // if pod = self, shortcut and send directly without serialization
-                            shardHub.sendToLocalEntity(message.entityId, message.entityType.value, message.body)
-                          } else {
-                            shardClient.sendMessage(message, pod)
-                          }
-                        send.catchSome { case _: EntityNotManagedByThisPod | _: PodUnavailable =>
-                          Clock.sleep(200.millis) *> trySend
-                        }
-                      case None      =>
-                        // no shard assignment, retry
-                        Clock.sleep(100.millis) *> trySend
-                    }
-      } yield response
-
-    trySend
-  }
 
   def isEntityOnLocalShards(entityId: String): UIO[Boolean] =
     for {
@@ -125,8 +106,8 @@ class Sharding(
   val refreshAssignments: ZIO[Scope, Nothing, Unit] = {
     val assignmentStream =
       ZStream.fromZIO(
-        shardClient.getAssignments.map(_ -> true)
-      ) ++ // first, get the assignments from the shard manager directly
+        shardManager.getAssignments.map(_ -> true) // first, get the assignments from the shard manager directly
+      ) ++
         storage.assignmentsStream.map(_ -> false) // then, get assignments changes from Redis
     assignmentStream.mapZIO { case (assignmentsOpt, fromShardManager) =>
       val assignments = assignmentsOpt.flatMap { case (k, v) => v.map(k -> _) }
@@ -145,54 +126,131 @@ class Sharding(
   def isShuttingDown: UIO[Boolean] =
     isShuttingDownRef.get
 
-//  def registerEntity[Req](
-//    entityType: EntityType,
-//    behavior: (String, Queue[Req]) => Task[Nothing],
-//    replyTo: Req => Option[String],
-//    terminateMessage: Promise[Nothing, Unit] => Req
-//  ) =
-//    for {
-//      entities <- Ref.Synchronized.make[Map[String, (Option[Queue[Req]], Fiber[Nothing, Unit])]](Map())
-//      manager   = new EntityManager[Req](behavior, replyTo, terminateMessage, entities, self)
-//      _        <- manager.start(entityType).forkDaemon
-//    } yield new Sender[Req] {
-//      def sendMessage(message: Message2[Req]): Task[Option[Any]] = {
-//        val shardId                    = getShardId(message.entityId)
-//        def trySend: Task[Option[Any]] =
-//          for {
-//            shards   <- shardAssignments.get
-//            pod       = shards.get(shardId)
-//            response <- pod match {
-//                          case Some(pod) =>
-//                            val send =
-//                              if (pod == address) {
-//                                // if pod = self, shortcut and send directly without serialization
-//                                shardHub.sendToLocalEntity(message.entityId, message.entityType.value, message.body)
-//                              } else {
-//                                shardClient.sendMessage(message, pod)
-//                              }
-//                            send.catchSome { case _: EntityNotManagedByThisPod | _: PodUnavailable =>
-//                              Clock.sleep(200.millis) *> trySend
-//                            }
-//                          case None      =>
-//                            // no shard assignment, retry
-//                            Clock.sleep(100.millis) *> trySend
-//                        }
-//          } yield response
-//
-//        trySend
-//      }
-//    }
+  def sendToLocalEntity(msg: BinaryMessage): Task[Option[Array[Byte]]] =
+    entityStates.get.flatMap(states =>
+      ZIO
+        .foreach(states.get(msg.entityType)) { state =>
+          for {
+            p      <- Promise.make[Throwable, Option[Array[Byte]]]
+            _      <- state.binaryQueue.offer((msg, p))
+            result <- p.await
+          } yield result
+        }
+        .map(_.flatten)
+    )
+
+  def initReply(id: String, promise: Promise[Throwable, Option[Any]], context: String): UIO[Unit] =
+    promises.update(promises => promises.updated(id, promise)) <*
+      promise.await
+        .timeoutFail(new Exception(s"Promise was not completed in time. $context"))(12 seconds) // > ask timeout
+        .onError(cause => abortReply(id, cause.squash))
+        .forkDaemon
+
+  private def abortReply(id: String, ex: Throwable): UIO[Unit] =
+    promises.updateZIO(promises => ZIO.whenCase(promises.get(id)) { case Some(p) => p.fail(ex) }.as(promises - id))
+
+  def registerEntity[Req: Tag](
+    entityType: EntityType[Req],
+    behavior: (String, Dequeue[Req]) => Task[Nothing],
+    replyTo: Req => Option[String],
+    terminateMessage: Promise[Nothing, Unit] => Req
+  ): URIO[Serialization, Messenger[Req]] =
+    for {
+      serialization <- ZIO.service[Serialization]
+      entityManager <- EntityManager.make(behavior, replyTo, terminateMessage, self)
+      binaryQueue   <- Queue.unbounded[(BinaryMessage, Promise[Throwable, Option[Array[Byte]]])]
+      _             <- entityStates.update(_.updated(entityType.value, EntityState(binaryQueue, entityManager)))
+      _             <- ZStream
+                         .fromQueue(binaryQueue)
+                         .mapZIO { case (msg, p) =>
+                           serialization
+                             .decode[Req](msg.body)
+                             .map(req => Some((req, msg.entityId, p)))
+                             .catchAll(p.fail(_).as(None))
+                         }
+                         .collectSome
+                         .runForeach { case (msg, entityId, p) =>
+                           Promise
+                             .make[Throwable, Option[Any]]
+                             .flatMap(p2 =>
+                               entityManager
+                                 .send(entityId, msg, p2)
+                                 .catchAll(p.fail) *> p2.await.flatMap(res =>
+                                 ZIO
+                                   .foreach(res)(res => serialization.encode(res))
+                                   .flatMap(p.succeed(_))
+                                   .catchAll(p.fail(_))
+                                   .forkDaemon
+                               )
+                             )
+                         }
+                         .forkDaemon
+    } yield new Messenger[Req] {
+
+      def tell(entityId: String)(msg: Req): UIO[Unit] =
+        sendMessage(entityId, msg).timeout(10 seconds).forkDaemon.unit
+
+      def ask[Res](entityId: String)(msg: Address[Res] => Req): Task[Res] =
+        Random.nextUUID.flatMap { uuid =>
+          val body = msg(Address(uuid.toString))
+          sendMessage(entityId, body).flatMap {
+            case Some(value) => ZIO.attempt(value.asInstanceOf[Res])
+            case None        => ZIO.fail(new Exception(s"Ask returned nothing, entityId=$entityId, body=$body"))
+          }
+            .timeoutFail(AskTimeoutException(entityType, entityId, body))(10 seconds)
+            .interruptible
+        }
+
+      def reply[Reply](reply: Reply, replyTo: Address[Reply]): UIO[Unit] =
+        promises.updateZIO(promises =>
+          ZIO.whenCase(promises.get(replyTo.id)) { case Some(p) => p.succeed(Some(reply)) }.as(promises - replyTo.id)
+        )
+
+      private def sendMessage(entityId: String, msg: Req): Task[Option[Any]] = {
+        val shardId                    = getShardId(entityId)
+        def trySend: Task[Option[Any]] =
+          for {
+            shards   <- shardAssignments.get
+            pod       = shards.get(shardId)
+            response <- pod match {
+                          case Some(pod) =>
+                            val send =
+                              if (pod == address) {
+                                // if pod = self, shortcut and send directly without serialization
+                                Promise
+                                  .make[Throwable, Option[Any]]
+                                  .flatMap(p => entityManager.send(entityId, msg, p) *> p.await)
+                              } else {
+                                serialization
+                                  .encode(msg)
+                                  .flatMap(bytes =>
+                                    shardClient
+                                      .sendMessage(BinaryMessage(entityId, entityType.value, bytes), pod)
+                                      .flatMap(ZIO.foreach(_)(serialization.decode))
+                                  )
+                              }
+                            send.catchSome { case _: EntityNotManagedByThisPod | _: PodUnavailable =>
+                              Clock.sleep(200.millis) *> trySend
+                            }
+                          case None      =>
+                            // no shard assignment, retry
+                            Clock.sleep(100.millis) *> trySend
+                        }
+          } yield response
+
+        trySend
+      }
+    }
 }
 
 object Sharding {
-  val live: ZLayer[ShardClient with Storage with Config, Throwable, Sharding] =
+  val live: ZLayer[ShardClient with ShardManagerClient with Storage with Config, Throwable, Sharding] =
     ZLayer.scoped {
       for {
         config       <- ZIO.service[Config]
         shardClient  <- ZIO.service[ShardClient]
+        shardManager <- ZIO.service[ShardManagerClient]
         storage      <- ZIO.service[Storage]
-        shardHub     <- ShardHub.make
         shardsCache  <- Ref.make(Map.empty[ShardId, PodAddress])
         singletons   <- Ref.Synchronized
                           .make[List[(String, UIO[Nothing], Option[Fiber[Nothing, Nothing]])]](Nil)
@@ -204,18 +262,27 @@ object Sharding {
                               }
                             )
                           )
+        entityStates <- Ref.Synchronized.make[Map[String, EntityState]](Map())
+        promises     <- Ref.Synchronized.make[Map[String, Promise[Throwable, Option[Any]]]](Map())
         shuttingDown <- Ref.make(false)
         sharding      = new Sharding(
                           PodAddress(config.selfHost, config.shardingPort),
                           config.numberOfShards,
                           shardsCache,
                           singletons,
+                          entityStates,
+                          promises,
                           shuttingDown,
-                          shardHub,
+                          shardManager,
                           shardClient,
                           storage
                         )
         _            <- sharding.refreshAssignments
       } yield sharding
     }
+
+  case class EntityState(
+    binaryQueue: Queue[(BinaryMessage, Promise[Throwable, Option[Array[Byte]]])],
+    entityManager: EntityManager[Nothing]
+  )
 }

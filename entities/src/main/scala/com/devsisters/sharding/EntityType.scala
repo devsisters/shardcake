@@ -1,3 +1,3 @@
 package com.devsisters.sharding
 
-abstract class EntityType(val value: String)
+abstract class EntityType[+A](val value: String)

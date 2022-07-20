@@ -51,7 +51,8 @@ lazy val root = project
     manager,
     entities,
     healthK8s,
-    storageRedis
+    storageRedis,
+    grpcProtocol
   )
 
 lazy val core = project
@@ -70,7 +71,7 @@ lazy val manager = project
   .in(file("manager"))
   .settings(name := "sharding-manager")
   .settings(commonSettings)
-  .dependsOn(core, shardingProtocol)
+  .dependsOn(core)
   .settings(
     libraryDependencies ++=
       Seq(
@@ -85,7 +86,7 @@ lazy val entities = project
   .in(file("entities"))
   .settings(name := "sharding-entities")
   .settings(commonSettings)
-  .dependsOn(core, shardingProtocol)
+  .dependsOn(core)
   .settings(
     libraryDependencies ++=
       Seq(
@@ -123,11 +124,31 @@ lazy val storageRedis = project
       )
   )
 
+lazy val grpcProtocol = project
+  .in(file("protocol-grpc"))
+  .settings(name := "sharding-protocol-grpc")
+  .settings(commonSettings)
+  .settings(protobuf: _*)
+  .settings(
+    Compile / PB.targets := Seq(
+      scalapb.gen(grpc = true)          -> (Compile / sourceManaged).value,
+      scalapb.zio_grpc.ZioCodeGenerator -> (Compile / sourceManaged).value
+    )
+  )
+  .dependsOn(core, entities)
+  .settings(
+    libraryDependencies ++= Seq(
+      "com.thesamet.scalapb"          %% "scalapb-runtime"      % scalapb.compiler.Version.scalapbVersion % "protobuf",
+      "com.thesamet.scalapb"          %% "scalapb-runtime-grpc" % scalapb.compiler.Version.scalapbVersion,
+      "com.thesamet.scalapb.zio-grpc" %% "zio-grpc-core"        % zioGrpcVersion
+    )
+  )
+
 lazy val examples = project
   .in(file("examples"))
   .settings(name := "examples")
   .settings(commonSettings)
-  .dependsOn(manager, storageRedis)
+  .dependsOn(manager, storageRedis, grpcProtocol)
 
 lazy val protobuf = Seq(
   PB.protocVersion    := "3.19.2",
@@ -139,22 +160,6 @@ lazy val protobuf = Seq(
       PB.protocExecutable.value
   )
 ) ++ Project.inConfig(Test)(sbtprotoc.ProtocPlugin.protobufConfigSettings)
-
-lazy val shardingProtocol = (project in file("sharding-protocol"))
-  .settings(protobuf: _*)
-  .settings(
-    Compile / PB.targets := Seq(
-      scalapb.gen(grpc = true)          -> (Compile / sourceManaged).value,
-      scalapb.zio_grpc.ZioCodeGenerator -> (Compile / sourceManaged).value
-    )
-  )
-  .settings(
-    libraryDependencies ++= Seq(
-      "com.thesamet.scalapb"          %% "scalapb-runtime"      % scalapb.compiler.Version.scalapbVersion % "protobuf",
-      "com.thesamet.scalapb"          %% "scalapb-runtime-grpc" % scalapb.compiler.Version.scalapbVersion,
-      "com.thesamet.scalapb.zio-grpc" %% "zio-grpc-core"        % zioGrpcVersion
-    )
-  )
 
 lazy val commonSettings = Def.settings(
   resolvers ++= Resolver.sonatypeOssRepos("snapshots"),
