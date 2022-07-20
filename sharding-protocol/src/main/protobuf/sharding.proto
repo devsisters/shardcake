@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+option java_package = "com.devsisters.sharding.protobuf";
+
+service ShardingService {
+    rpc AssignShards (AssignShardsRequest) returns (AssignShardsResponse) {}
+    rpc UnassignShards (UnassignShardsRequest) returns (UnassignShardsResponse) {}
+    rpc Send (SendRequest) returns (SendResponse) {}
+    rpc PingShards (PingShardsRequest) returns (PingShardsResponse) {}
+}
+
+message AssignShardsRequest {
+    repeated int32 shards = 1;
+}
+
+message AssignShardsResponse {}
+
+message UnassignShardsRequest {
+    repeated int32 shards = 1;
+}
+
+message UnassignShardsResponse {}
+
+message SendRequest {
+    string entity_id = 1;
+    string entity_type = 2;
+    bytes body = 3;
+}
+
+message SendResponse {
+    bytes body = 1;
+}
+
+message PingShardsRequest {}
+
+message PingShardsResponse {}

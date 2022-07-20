@@ -1,0 +1,23 @@
+target/
+.idea/
+.bsp/
+# vim
+*.sw?
+
+# Ignore [ce]tags files
+tags
+
+.bloop
+.metals
+.vscode
+project/metals.sbt
+*.class
+*.log
+
+vuepress/node_modules/*
+*.lock
+vuepress/package-lock.json
+
+package-lock.json
+node_modules/
+.DS_Store
