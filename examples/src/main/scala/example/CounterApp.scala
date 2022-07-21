@@ -29,7 +29,7 @@ object CounterApp extends ZIOAppDefault {
 //      grpcConfig,
       redis,
 //      AsyncHttpClientZioBackend.layer(),
-      Serialization.javaSerialization,
+      KryoSerialization.live,
       StorageRedis.live,
 //      ShardManagerClient.live,
       ShardManagerClient.local,

@@ -11,6 +11,7 @@ val zioCatsInteropVersion = "3.3.0"
 val sttpVersion           = "3.7.0"
 val calibanVersion        = "2.0.0-RC2+89-ff2d3a19-SNAPSHOT"
 val redis4catsVersion     = "1.2.0"
+val chillVersion          = "0.9.5"
 
 inThisBuild(
   List(
@@ -52,6 +53,7 @@ lazy val root = project
     entities,
     healthK8s,
     storageRedis,
+    serializationKryo,
     grpcProtocol
   )
 
@@ -124,6 +126,18 @@ lazy val storageRedis = project
       )
   )
 
+lazy val serializationKryo = project
+  .in(file("serialization-kryo"))
+  .settings(name := "sharding-serialization-kryo")
+  .settings(commonSettings)
+  .dependsOn(core)
+  .settings(
+    libraryDependencies ++=
+      Seq(
+        "com.twitter" %% "chill" % chillVersion
+      )
+  )
+
 lazy val grpcProtocol = project
   .in(file("protocol-grpc"))
   .settings(name := "sharding-protocol-grpc")
@@ -150,7 +164,7 @@ lazy val examples = project
   .in(file("examples"))
   .settings(name := "examples")
   .settings(commonSettings)
-  .dependsOn(manager, storageRedis, grpcProtocol)
+  .dependsOn(manager, storageRedis, grpcProtocol, serializationKryo)
 
 lazy val protobuf = Seq(
   PB.protocVersion    := "3.19.2",
