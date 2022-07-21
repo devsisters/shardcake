@@ -7,6 +7,7 @@ import com.devsisters.sharding.internal.GraphQLClient.PodAddressInput
 import sttp.capabilities.WebSockets
 import sttp.capabilities.zio.ZioStreams
 import sttp.client3.SttpBackend
+import sttp.client3.asynchttpclient.zio.AsyncHttpClientZioBackend
 import zio._
 
 trait ShardManagerClient {
@@ -17,8 +18,8 @@ trait ShardManagerClient {
 }
 
 object ShardManagerClient {
-  val live: ZLayer[Config with SttpBackend[Task, ZioStreams with WebSockets], Throwable, ShardManagerClient] =
-    ZLayer.scoped {
+  val live: ZLayer[Config, Throwable, ShardManagerClient] =
+    AsyncHttpClientZioBackend.layer() >>> ZLayer {
       for {
         sttpClient <- ZIO.service[SttpBackend[Task, ZioStreams with WebSockets]]
         config     <- ZIO.service[Config]

@@ -5,7 +5,6 @@ import com.devsisters.sharding.interfaces.{ Pods, Serialization }
 import example.CounterActor.CounterMessage
 import example.CounterActor.CounterMessage.{ DecrementCounter, GetCounter, IncrementCounter }
 import sttp.client3.UriContext
-import sttp.client3.asynchttpclient.zio.AsyncHttpClientZioBackend
 import zio._
 
 object CounterApp extends ZIOAppDefault {
@@ -28,7 +27,6 @@ object CounterApp extends ZIOAppDefault {
       config,
 //      grpcConfig,
       redis,
-//      AsyncHttpClientZioBackend.layer(),
       KryoSerialization.live,
       StorageRedis.live,
 //      ShardManagerClient.live,
