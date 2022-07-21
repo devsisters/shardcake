@@ -143,7 +143,7 @@ class Sharding(
     )
 
   private[sharding] def initReply(id: String, promise: Promise[Throwable, Option[Any]], context: String): UIO[Unit] =
-    promises.update(promises => promises.updated(id, promise)) <*
+    promises.update(_.updated(id, promise)) <*
       promise.await
         .timeoutFail(new Exception(s"Promise was not completed in time. $context"))(12 seconds) // > ask timeout
         .onError(cause => abortReply(id, cause.squash))
@@ -196,16 +196,16 @@ class Sharding(
         Random.nextUUID.flatMap { uuid =>
           val body = msg(Address(uuid.toString))
           sendMessage(entityId, body, Some(uuid.toString)).flatMap {
-            case Some(value) => ZIO.attempt(value.asInstanceOf[Res])
+            case Some(value) => ZIO.succeed(value)
             case None        => ZIO.fail(new Exception(s"Ask returned nothing, entityId=$entityId, body=$body"))
           }
             .timeoutFail(AskTimeoutException(entityType, entityId, body))(10 seconds)
             .interruptible
         }
 
-      private def sendMessage(entityId: String, msg: Req, replyId: Option[String]): Task[Option[Any]] = {
+      private def sendMessage[Res](entityId: String, msg: Req, replyId: Option[String]): Task[Option[Res]] = {
         val shardId                    = getShardId(entityId)
-        def trySend: Task[Option[Any]] =
+        def trySend: Task[Option[Res]] =
           for {
             shards   <- shardAssignments.get
             pod       = shards.get(shardId)
@@ -216,7 +216,10 @@ class Sharding(
                                 // if pod = self, shortcut and send directly without serialization
                                 Promise
                                   .make[Throwable, Option[Any]]
-                                  .flatMap(p => entityManager.send(entityId, msg, replyId, p) *> p.await)
+                                  .flatMap(p =>
+                                    entityManager.send(entityId, msg, replyId, p) *>
+                                      p.await.map(_.asInstanceOf[Option[Res]])
+                                  )
                               } else {
                                 serialization
                                   .encode(msg)
@@ -233,7 +236,7 @@ class Sharding(
                                           ZIO.whenZIO(notify)(shardManager.notifyUnhealthyPod(pod).forkDaemon)
                                         }
                                       }
-                                      .flatMap(ZIO.foreach(_)(serialization.decode))
+                                      .flatMap(ZIO.foreach(_)(serialization.decode[Res]))
                                   )
                               }
                             send.catchSome { case _: EntityNotManagedByThisPod | _: PodUnavailable =>
