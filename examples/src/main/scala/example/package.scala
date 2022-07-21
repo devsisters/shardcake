@@ -15,7 +15,7 @@ package object example {
       implicit val logger: Log[Task]         = new Log[Task] {
         override def debug(msg: => String): Task[Unit] = ZIO.unit
         override def error(msg: => String): Task[Unit] = ZIO.logError(msg)
-        override def info(msg: => String): Task[Unit]  = ZIO.logInfo(msg)
+        override def info(msg: => String): Task[Unit]  = ZIO.logDebug(msg)
       }
 
       (for {

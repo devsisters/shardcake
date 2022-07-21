@@ -115,7 +115,7 @@ class Sharding(
     assignmentStream.mapZIO { case (assignmentsOpt, fromShardManager) =>
       val assignments = assignmentsOpt.flatMap { case (k, v) => v.map(k -> _) }
       ZIO.logDebug("Received new shard assignments") *>
-        (if (fromShardManager) shardAssignments.set(assignments)
+        (if (fromShardManager) shardAssignments.update(map => if (map.isEmpty) assignments else map)
          else
            shardAssignments.update(map =>
              // we keep self assignments (we don't override them with the new assignments
@@ -195,7 +195,7 @@ class Sharding(
       def ask[Res](entityId: String)(msg: Address[Res] => Req): Task[Res] =
         Random.nextUUID.flatMap { uuid =>
           val body = msg(Address(uuid.toString))
-          sendMessage(entityId, body, Some(uuid.toString)).flatMap {
+          sendMessage[Res](entityId, body, Some(uuid.toString)).flatMap {
             case Some(value) => ZIO.succeed(value)
             case None        => ZIO.fail(new Exception(s"Ask returned nothing, entityId=$entityId, body=$body"))
           }

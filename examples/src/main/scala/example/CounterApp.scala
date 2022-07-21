@@ -14,6 +14,7 @@ object CounterApp extends ZIOAppDefault {
   def run: Task[Unit] =
     (for {
       _       <- ZIO.serviceWithZIO[Sharding](_.register)
+      _       <- ZIO.serviceWithZIO[Sharding](_.getNumberOfPods).repeatWhile(_ == 0)
       counter <- ZIO.service[Messenger[CounterMessage]]
       _       <- counter.tell("c1")(IncrementCounter)
       _       <- counter.tell("c1")(DecrementCounter)
@@ -22,16 +23,18 @@ object CounterApp extends ZIOAppDefault {
       _       <- counter.tell("c2")(IncrementCounter)
       _       <- counter.ask("c1")(GetCounter).debug
       _       <- counter.ask("c2")(GetCounter).debug
-    } yield ()).provide(
-      config,
-      grpcConfig,
-      redis,
-      KryoSerialization.live,
-      StorageRedis.live,
-      ShardManagerClient.sttpLive,
-      GrpcPods.live,
-      Sharding.live,
-      GrpcShardingService.live,
-      CounterActor.live
-    )
+      _       <- ZIO.serviceWithZIO[Sharding](_.unregister)
+    } yield ())
+      .provide(
+        config,
+        grpcConfig,
+        redis,
+        KryoSerialization.live,
+        StorageRedis.live,
+        ShardManagerClient.sttpLive,
+        GrpcPods.live,
+        Sharding.live,
+        GrpcShardingService.live,
+        CounterActor.live
+      )
 }

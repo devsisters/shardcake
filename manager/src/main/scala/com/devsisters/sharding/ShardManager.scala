@@ -27,11 +27,13 @@ class ShardManager(
 
   def register(pod: Pod): UIO[Unit] =
     ZIO.logInfo(s"Registering $pod") *>
-      (stateRef.updateAndGetZIO(state =>
-        ZIO
-          .succeed(OffsetDateTime.now())
-          .map(cdt => state.copy(pods = state.pods.updated(pod.address, PodWithMetadata(pod, cdt))))
-      ) *>
+      (stateRef
+        .updateAndGetZIO(state =>
+          ZIO
+            .succeed(OffsetDateTime.now())
+            .map(cdt => state.copy(pods = state.pods.updated(pod.address, PodWithMetadata(pod, cdt))))
+        )
+        .flatMap(state => ZIO.when(state.unassignedShards.nonEmpty)(rebalance(false))) *>
         persistPods.forkDaemon).unit
 
   def notifyUnhealthyPod(podAddress: PodAddress): UIO[Unit] =
