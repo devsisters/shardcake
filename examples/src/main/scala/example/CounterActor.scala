@@ -1,3 +1,5 @@
+package example
+
 import com.devsisters.sharding.Messenger.Address
 import com.devsisters.sharding.interfaces.Serialization
 import com.devsisters.sharding.{ EntityType, Messenger, Sharding }
