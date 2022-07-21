@@ -68,7 +68,7 @@ class GrpcPods(
   def ping(pod: PodAddress): Task[Unit] =
     getConnection(pod).flatMap(_.pingShards(PingShardsRequest()).unit.mapError(_.asException()))
 
-  def sendMessage(message: BinaryMessage, pod: PodAddress): Task[Option[Array[Byte]]] =
+  def sendMessage(pod: PodAddress, message: BinaryMessage): Task[Option[Array[Byte]]] =
     getConnection(pod)
       .flatMap(
         _.send(SendRequest(message.entityId, message.entityType, ByteString.copyFrom(message.body)))

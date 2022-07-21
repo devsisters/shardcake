@@ -152,16 +152,21 @@ class Sharding(
   private def abortReply(id: String, ex: Throwable): UIO[Unit] =
     promises.updateZIO(promises => ZIO.whenCase(promises.get(id)) { case Some(p) => p.fail(ex) }.as(promises - id))
 
+  def reply[Reply](reply: Reply, replyTo: Address[Reply]): UIO[Unit] =
+    promises.updateZIO(promises =>
+      ZIO.whenCase(promises.get(replyTo.id)) { case Some(p) => p.succeed(Some(reply)) }.as(promises - replyTo.id)
+    )
+
   def registerEntity[Req: Tag](
     entityType: EntityType[Req],
     behavior: (String, Dequeue[Req]) => Task[Nothing],
-    replyTo: Req => Option[String],
+    replyTo: Req => Option[Address[Nothing]],
     terminateMessage: Promise[Nothing, Unit] => Req
-  ): URIO[Serialization, Messenger[Req]] =
+  ): URIO[Scope with Serialization, Messenger[Req]] =
     for {
       serialization <- ZIO.service[Serialization]
       entityManager <- EntityManager.make(behavior, replyTo, terminateMessage, self)
-      binaryQueue   <- Queue.unbounded[(BinaryMessage, Promise[Throwable, Option[Array[Byte]]])]
+      binaryQueue   <- Queue.unbounded[(BinaryMessage, Promise[Throwable, Option[Array[Byte]]])].withFinalizer(_.shutdown)
       _             <- entityStates.update(_.updated(entityType.value, EntityState(binaryQueue, entityManager)))
       _             <- ZStream
                          .fromQueue(binaryQueue)
@@ -176,18 +181,13 @@ class Sharding(
                            Promise
                              .make[Throwable, Option[Any]]
                              .flatMap(p2 =>
-                               entityManager
-                                 .send(entityId, msg, p2)
-                                 .catchAll(p.fail) *> p2.await.flatMap(res =>
-                                 ZIO
-                                   .foreach(res)(res => serialization.encode(res))
-                                   .flatMap(p.succeed(_))
-                                   .catchAll(p.fail(_))
-                                   .forkDaemon
-                               )
+                               entityManager.send(entityId, msg, p2).catchAll(p.fail) *>
+                                 p2.await.flatMap(
+                                   ZIO.foreach(_)(serialization.encode).flatMap(p.succeed(_)).catchAll(p.fail(_)).fork
+                                 )
                              )
                          }
-                         .forkDaemon
+                         .forkScoped
     } yield new Messenger[Req] {
 
       def tell(entityId: String)(msg: Req): UIO[Unit] =
@@ -203,11 +203,6 @@ class Sharding(
             .timeoutFail(AskTimeoutException(entityType, entityId, body))(10 seconds)
             .interruptible
         }
-
-      def reply[Reply](reply: Reply, replyTo: Address[Reply]): UIO[Unit] =
-        promises.updateZIO(promises =>
-          ZIO.whenCase(promises.get(replyTo.id)) { case Some(p) => p.succeed(Some(reply)) }.as(promises - replyTo.id)
-        )
 
       private def sendMessage(entityId: String, msg: Req): Task[Option[Any]] = {
         val shardId                    = getShardId(entityId)
@@ -228,7 +223,7 @@ class Sharding(
                                   .encode(msg)
                                   .flatMap(bytes =>
                                     pods
-                                      .sendMessage(BinaryMessage(entityId, entityType.value, bytes), pod)
+                                      .sendMessage(pod, BinaryMessage(entityId, entityType.value, bytes))
                                       .tapError {
                                         ZIO.whenCase(_) { case PodUnavailable(pod) =>
                                           val notify = Clock.currentDateTime.flatMap(cdt =>

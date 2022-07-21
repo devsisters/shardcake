@@ -8,7 +8,7 @@ trait Pods {
   def assignShards(pod: PodAddress, shards: Set[ShardId]): Task[Unit]
   def unassignShards(pod: PodAddress, shards: Set[ShardId]): Task[Unit]
   def ping(pod: PodAddress): Task[Unit]
-  def sendMessage(message: BinaryMessage, pod: PodAddress): Task[Option[Array[Byte]]]
+  def sendMessage(pod: PodAddress, message: BinaryMessage): Task[Option[Array[Byte]]]
 }
 
 object Pods {
@@ -17,7 +17,7 @@ object Pods {
       def assignShards(pod: PodAddress, shards: Set[ShardId]): Task[Unit]                 = ZIO.unit
       def unassignShards(pod: PodAddress, shards: Set[ShardId]): Task[Unit]               = ZIO.unit
       def ping(pod: PodAddress): Task[Unit]                                               = ZIO.unit
-      def sendMessage(message: BinaryMessage, pod: PodAddress): Task[Option[Array[Byte]]] = ZIO.none
+      def sendMessage(pod: PodAddress, message: BinaryMessage): Task[Option[Array[Byte]]] = ZIO.none
     })
 
   case class BinaryMessage(entityId: String, entityType: String, body: Array[Byte])

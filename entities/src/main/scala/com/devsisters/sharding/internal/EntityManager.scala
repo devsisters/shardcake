@@ -1,5 +1,6 @@
 package com.devsisters.sharding.internal
 
+import com.devsisters.sharding.Messenger.Address
 import com.devsisters.sharding.errors.EntityNotManagedByThisPod
 import com.devsisters.sharding.{ ShardId, Sharding }
 import zio._
@@ -13,7 +14,7 @@ private[sharding] trait EntityManager[-Req] {
 private[sharding] object EntityManager {
   def make[Req: Tag](
     behavior: (String, Queue[Req]) => Task[Nothing],
-    replyTo: Req => Option[String],
+    replyTo: Req => Option[Address[Nothing]],
     terminateMessage: Promise[Nothing, Unit] => Req,
     sharding: Sharding
   ): UIO[EntityManager[Req]] =
@@ -23,7 +24,7 @@ private[sharding] object EntityManager {
 
   class EntityManagerLive[Req](
     behavior: (String, Queue[Req]) => Task[Nothing],
-    replyTo: Req => Option[String],
+    replyTo: Req => Option[Address[Nothing]],
     terminateMessage: Promise[Nothing, Unit] => Req,
     entities: Ref.Synchronized[Map[String, (Option[Queue[Req]], Fiber[Nothing, Unit])]],
     sharding: Sharding
@@ -96,9 +97,9 @@ private[sharding] object EntityManager {
                    case Some(queue) =>
                      // add the message to the queue and setup the response promise if needed
                      (replyTo(req) match {
-                       case Some(id) =>
-                         sharding.initReply(id, promise, s"entityId: $entityId, req: $req") *> queue.offer(req)
-                       case None     => queue.offer(req) *> promise.succeed(None)
+                       case Some(address) =>
+                         sharding.initReply(address.id, promise, s"entityId: $entityId, req: $req") *> queue.offer(req)
+                       case None          => queue.offer(req) *> promise.succeed(None)
                      }).catchAllCause(_ => send(entityId, req, promise))
                  }
       } yield ()
