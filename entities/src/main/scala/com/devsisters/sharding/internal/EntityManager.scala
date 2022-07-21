@@ -6,7 +6,12 @@ import com.devsisters.sharding.{ ShardId, Sharding }
 import zio._
 
 private[sharding] trait EntityManager[-Req] {
-  def send(entityId: String, req: Req, promise: Promise[Throwable, Option[Any]]): IO[EntityNotManagedByThisPod, Unit]
+  def send(
+    entityId: String,
+    req: Req,
+    replyId: Option[String],
+    promise: Promise[Throwable, Option[Any]]
+  ): IO[EntityNotManagedByThisPod, Unit]
   def terminateEntitiesOnShards(shards: Set[ShardId]): UIO[Unit]
   def terminateAllEntities: UIO[Unit]
 }
@@ -14,18 +19,16 @@ private[sharding] trait EntityManager[-Req] {
 private[sharding] object EntityManager {
   def make[Req: Tag](
     behavior: (String, Queue[Req]) => Task[Nothing],
-    replyTo: Req => Option[Address[Nothing]],
-    terminateMessage: Promise[Nothing, Unit] => Req,
+    terminateMessage: Promise[Nothing, Unit] => Option[Req],
     sharding: Sharding
   ): UIO[EntityManager[Req]] =
     for {
       entities <- Ref.Synchronized.make[Map[String, (Option[Queue[Req]], Fiber[Nothing, Unit])]](Map())
-    } yield new EntityManagerLive[Req](behavior, replyTo, terminateMessage, entities, sharding)
+    } yield new EntityManagerLive[Req](behavior, terminateMessage, entities, sharding)
 
   class EntityManagerLive[Req](
     behavior: (String, Queue[Req]) => Task[Nothing],
-    replyTo: Req => Option[Address[Nothing]],
-    terminateMessage: Promise[Nothing, Unit] => Req,
+    terminateMessage: Promise[Nothing, Unit] => Option[Req],
     entities: Ref.Synchronized[Map[String, (Option[Queue[Req]], Fiber[Nothing, Unit])]],
     sharding: Sharding
   ) extends EntityManager[Req] {
@@ -42,7 +45,7 @@ private[sharding] object EntityManager {
             // if a queue is found, offer the termination message, and set the queue to None so that no new message is enqueued
             Promise
               .make[Nothing, Unit]
-              .flatMap(p => queue.offer(terminateMessage(p)).exit)
+              .flatMap(p => ZIO.foreach(terminateMessage(p))(queue.offer).exit)
               .as(map.updated(entityId, (None, interruptionFiber)))
           case _                                      =>
             // if no queue is found, do nothing
@@ -53,6 +56,7 @@ private[sharding] object EntityManager {
     def send(
       entityId: String,
       req: Req,
+      replyId: Option[String],
       promise: Promise[Throwable, Option[Any]]
     ): IO[EntityNotManagedByThisPod, Unit] =
       for {
@@ -93,14 +97,14 @@ private[sharding] object EntityManager {
         _     <- queue match {
                    case None        =>
                      // the queue is shutting down, try again a little later
-                     Clock.sleep(100 millis) *> send(entityId, req, promise)
+                     Clock.sleep(100 millis) *> send(entityId, req, replyId, promise)
                    case Some(queue) =>
                      // add the message to the queue and setup the response promise if needed
-                     (replyTo(req) match {
-                       case Some(address) =>
-                         sharding.initReply(address.id, promise, s"entityId: $entityId, req: $req") *> queue.offer(req)
+                     (replyId match {
+                       case Some(replyId) =>
+                         sharding.initReply(replyId, promise, s"entityId: $entityId, req: $req") *> queue.offer(req)
                        case None          => queue.offer(req) *> promise.succeed(None)
-                     }).catchAllCause(_ => send(entityId, req, promise))
+                     }).catchAllCause(_ => send(entityId, req, replyId, promise))
                  }
       } yield ()
 
@@ -123,7 +127,14 @@ private[sharding] object EntityManager {
                       Promise
                         .make[Nothing, Unit]
                         .tap(p =>
-                          ZIO.foreachDiscard(queue)(_.offer(terminateMessage(p)).catchAllCause(_ => p.succeed(())))
+                          queue match {
+                            case Some(queue) =>
+                              terminateMessage(p) match {
+                                case Some(terminate) => queue.offer(terminate).catchAllCause(_ => p.succeed(()))
+                                case None            => p.succeed(())
+                              }
+                            case None        => p.succeed(())
+                          }
                         )
                     }
         // wait until they are all terminated

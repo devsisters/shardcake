@@ -140,7 +140,9 @@ lazy val grpcProtocol = project
     libraryDependencies ++= Seq(
       "com.thesamet.scalapb"          %% "scalapb-runtime"      % scalapb.compiler.Version.scalapbVersion % "protobuf",
       "com.thesamet.scalapb"          %% "scalapb-runtime-grpc" % scalapb.compiler.Version.scalapbVersion,
-      "com.thesamet.scalapb.zio-grpc" %% "zio-grpc-core"        % zioGrpcVersion
+      "com.thesamet.scalapb.zio-grpc" %% "zio-grpc-core"        % zioGrpcVersion,
+      "io.grpc"                        % "grpc-netty"           % scalapb.compiler.Version.grpcJavaVersion,
+      "io.grpc"                        % "grpc-services"        % scalapb.compiler.Version.grpcJavaVersion
     )
   )
 

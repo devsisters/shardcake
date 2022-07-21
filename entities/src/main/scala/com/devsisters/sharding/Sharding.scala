@@ -160,12 +160,11 @@ class Sharding(
   def registerEntity[Req: Tag](
     entityType: EntityType[Req],
     behavior: (String, Dequeue[Req]) => Task[Nothing],
-    replyTo: Req => Option[Address[Nothing]],
-    terminateMessage: Promise[Nothing, Unit] => Req
+    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
   ): URIO[Scope with Serialization, Messenger[Req]] =
     for {
       serialization <- ZIO.service[Serialization]
-      entityManager <- EntityManager.make(behavior, replyTo, terminateMessage, self)
+      entityManager <- EntityManager.make(behavior, terminateMessage, self)
       binaryQueue   <- Queue.unbounded[(BinaryMessage, Promise[Throwable, Option[Array[Byte]]])].withFinalizer(_.shutdown)
       _             <- entityStates.update(_.updated(entityType.value, EntityState(binaryQueue, entityManager)))
       _             <- ZStream
@@ -173,15 +172,15 @@ class Sharding(
                          .mapZIO { case (msg, p) =>
                            serialization
                              .decode[Req](msg.body)
-                             .map(req => Some((req, msg.entityId, p)))
+                             .map(req => Some((req, msg.entityId, p, msg.replyId)))
                              .catchAll(p.fail(_).as(None))
                          }
                          .collectSome
-                         .runForeach { case (msg, entityId, p) =>
+                         .runForeach { case (msg, entityId, p, replyId) =>
                            Promise
                              .make[Throwable, Option[Any]]
                              .flatMap(p2 =>
-                               entityManager.send(entityId, msg, p2).catchAll(p.fail) *>
+                               entityManager.send(entityId, msg, replyId, p2).catchAll(p.fail) *>
                                  p2.await.flatMap(
                                    ZIO.foreach(_)(serialization.encode).flatMap(p.succeed(_)).catchAll(p.fail(_)).fork
                                  )
@@ -191,12 +190,12 @@ class Sharding(
     } yield new Messenger[Req] {
 
       def tell(entityId: String)(msg: Req): UIO[Unit] =
-        sendMessage(entityId, msg).timeout(10 seconds).forkDaemon.unit
+        sendMessage(entityId, msg, None).timeout(10 seconds).forkDaemon.unit
 
       def ask[Res](entityId: String)(msg: Address[Res] => Req): Task[Res] =
         Random.nextUUID.flatMap { uuid =>
           val body = msg(Address(uuid.toString))
-          sendMessage(entityId, body).flatMap {
+          sendMessage(entityId, body, Some(uuid.toString)).flatMap {
             case Some(value) => ZIO.attempt(value.asInstanceOf[Res])
             case None        => ZIO.fail(new Exception(s"Ask returned nothing, entityId=$entityId, body=$body"))
           }
@@ -204,7 +203,7 @@ class Sharding(
             .interruptible
         }
 
-      private def sendMessage(entityId: String, msg: Req): Task[Option[Any]] = {
+      private def sendMessage(entityId: String, msg: Req, replyId: Option[String]): Task[Option[Any]] = {
         val shardId                    = getShardId(entityId)
         def trySend: Task[Option[Any]] =
           for {
@@ -217,13 +216,13 @@ class Sharding(
                                 // if pod = self, shortcut and send directly without serialization
                                 Promise
                                   .make[Throwable, Option[Any]]
-                                  .flatMap(p => entityManager.send(entityId, msg, p) *> p.await)
+                                  .flatMap(p => entityManager.send(entityId, msg, replyId, p) *> p.await)
                               } else {
                                 serialization
                                   .encode(msg)
                                   .flatMap(bytes =>
                                     pods
-                                      .sendMessage(pod, BinaryMessage(entityId, entityType.value, bytes))
+                                      .sendMessage(pod, BinaryMessage(entityId, entityType.value, bytes, replyId))
                                       .tapError {
                                         ZIO.whenCase(_) { case PodUnavailable(pod) =>
                                           val notify = Clock.currentDateTime.flatMap(cdt =>

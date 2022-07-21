@@ -25,6 +25,7 @@ message SendRequest {
     string entity_id = 1;
     string entity_type = 2;
     bytes body = 3;
+    optional string reply_id = 4;
 }
 
 message SendResponse {

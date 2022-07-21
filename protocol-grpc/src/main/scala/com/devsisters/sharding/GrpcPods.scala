@@ -3,19 +3,12 @@ package com.devsisters.sharding
 import com.devsisters.sharding.errors._
 import com.devsisters.sharding.interfaces.Pods
 import com.devsisters.sharding.interfaces.Pods.BinaryMessage
-import com.devsisters.sharding.protobuf.sharding.{
-  AssignShardsRequest,
-  PingShardsRequest,
-  SendRequest,
-  UnassignShardsRequest
-}
+import com.devsisters.sharding.protobuf.sharding._
 import com.devsisters.sharding.protobuf.sharding.ZioSharding.ShardingServiceClient
 import com.google.protobuf.ByteString
 import io.grpc.{ ManagedChannelBuilder, Status }
 import scalapb.zio_grpc.ZManagedChannel
 import zio._
-
-import java.time.OffsetDateTime
 
 class GrpcPods(
   config: GrpcConfig,
@@ -71,7 +64,7 @@ class GrpcPods(
   def sendMessage(pod: PodAddress, message: BinaryMessage): Task[Option[Array[Byte]]] =
     getConnection(pod)
       .flatMap(
-        _.send(SendRequest(message.entityId, message.entityType, ByteString.copyFrom(message.body)))
+        _.send(SendRequest(message.entityId, message.entityType, ByteString.copyFrom(message.body), message.replyId))
           .foldZIO(
             status =>
               if (status.getCode == Status.Code.RESOURCE_EXHAUSTED) {

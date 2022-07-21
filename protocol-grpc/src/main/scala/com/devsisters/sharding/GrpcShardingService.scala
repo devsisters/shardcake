@@ -18,7 +18,9 @@ trait GrpcShardingService extends ZShardingService[Sharding, Any] {
   def send(request: SendRequest): ZIO[Sharding, Status, SendResponse] =
     ZIO
       .serviceWithZIO[Sharding](
-        _.sendToLocalEntity(BinaryMessage(request.entityId, request.entityType, request.body.toByteArray))
+        _.sendToLocalEntity(
+          BinaryMessage(request.entityId, request.entityType, request.body.toByteArray, request.replyId)
+        )
       )
       .map {
         case None      => ByteString.EMPTY

@@ -20,5 +20,5 @@ object Pods {
       def sendMessage(pod: PodAddress, message: BinaryMessage): Task[Option[Array[Byte]]] = ZIO.none
     })
 
-  case class BinaryMessage(entityId: String, entityType: String, body: Array[Byte])
+  case class BinaryMessage(entityId: String, entityType: String, body: Array[Byte], replyId: Option[String])
 }
