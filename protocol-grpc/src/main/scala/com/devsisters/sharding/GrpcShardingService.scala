@@ -5,7 +5,9 @@ import com.devsisters.sharding.interfaces.Pods.BinaryMessage
 import com.devsisters.sharding.protobuf.sharding.ZioSharding.ZShardingService
 import com.devsisters.sharding.protobuf.sharding._
 import com.google.protobuf.ByteString
-import io.grpc.{ Status, StatusException, StatusRuntimeException }
+import io.grpc.protobuf.services.ProtoReflectionService
+import io.grpc.{ ServerBuilder, Status, StatusException, StatusRuntimeException }
+import scalapb.zio_grpc.{ Server, ServerLayer, ServiceList }
 import zio._
 
 trait GrpcShardingService extends ZShardingService[Sharding, Any] {
@@ -38,4 +40,13 @@ trait GrpcShardingService extends ZShardingService[Sharding, Any] {
     case e: EntityNotManagedByThisPod => Status.RESOURCE_EXHAUSTED.withCause(e)
     case e                            => Status.INTERNAL.withCause(e).withDescription(e.getMessage)
   }
+}
+
+object GrpcShardingService {
+  val live: ZLayer[Config with Sharding, Throwable, Unit] =
+    ZLayer.service[Config].flatMap { config =>
+      val builder  = ServerBuilder.forPort(config.get.shardingPort).addService(ProtoReflectionService.newInstance())
+      val services = ServiceList.add(new GrpcShardingService {})
+      ServerLayer.fromServiceList(builder, services).unit
+    }
 }

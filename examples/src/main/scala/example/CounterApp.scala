@@ -1,7 +1,6 @@
 package example
 
 import com.devsisters.sharding._
-import com.devsisters.sharding.interfaces.{ Pods, Serialization }
 import example.CounterActor.CounterMessage
 import example.CounterActor.CounterMessage.{ DecrementCounter, GetCounter, IncrementCounter }
 import sttp.client3.UriContext
@@ -25,15 +24,14 @@ object CounterApp extends ZIOAppDefault {
       _       <- counter.ask("c2")(GetCounter).debug
     } yield ()).provide(
       config,
-//      grpcConfig,
+      grpcConfig,
       redis,
       KryoSerialization.live,
       StorageRedis.live,
-//      ShardManagerClient.live,
-      ShardManagerClient.local,
-      Pods.noop,
-//      GrpcPods.live,
+      ShardManagerClient.live,
+      GrpcPods.live,
       Sharding.live,
+      GrpcShardingService.live,
       CounterActor.live
     )
 }
