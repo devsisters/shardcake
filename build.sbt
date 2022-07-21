@@ -1,7 +1,6 @@
-val scala212 = "2.12.16"
 val scala213 = "2.13.8"
 val scala3   = "3.1.3"
-val allScala = Seq(scala212, scala213, scala3)
+val allScala = Seq(scala213, scala3)
 
 val zioVersion            = "2.0.0"
 val zioGrpcVersion        = "0.0.0+1-78c41c4f-SNAPSHOT"
@@ -9,7 +8,7 @@ val zioK8sVersion         = "2.0.0"
 val zioCacheVersion       = "0.2.0"
 val zioCatsInteropVersion = "3.3.0"
 val sttpVersion           = "3.7.0"
-val calibanVersion        = "2.0.0-RC2+89-ff2d3a19-SNAPSHOT"
+val calibanVersion        = "2.0.0"
 val redis4catsVersion     = "1.2.0"
 val chillVersion          = "0.9.5"
 
@@ -134,7 +133,7 @@ lazy val serializationKryo = project
   .settings(
     libraryDependencies ++=
       Seq(
-        "com.twitter" %% "chill" % chillVersion
+        ("com.twitter" %% "chill" % chillVersion).cross(CrossVersion.for3Use2_13)
       )
   )
 

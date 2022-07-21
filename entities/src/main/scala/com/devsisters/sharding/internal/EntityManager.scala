@@ -71,7 +71,7 @@ private[sharding] object EntityManager {
                          startExpirationFiber(entityId).map(fiber => (queue, map.updated(entityId, (queue, fiber))))
                      case Some((None, _))                          =>
                        // the queue is shutting down, stash and retry
-                       ZIO.succeed(None, map)
+                       ZIO.succeed((None, map))
                      case None                                     =>
                        sharding.isShuttingDown.flatMap {
                          case true  =>
