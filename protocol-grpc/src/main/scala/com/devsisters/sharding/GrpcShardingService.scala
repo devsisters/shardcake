@@ -7,7 +7,7 @@ import com.devsisters.sharding.protobuf.sharding._
 import com.google.protobuf.ByteString
 import io.grpc.protobuf.services.ProtoReflectionService
 import io.grpc.{ ServerBuilder, Status, StatusException, StatusRuntimeException }
-import scalapb.zio_grpc.{ Server, ServerLayer, ServiceList }
+import scalapb.zio_grpc.{ ServerLayer, ServiceList }
 import zio._
 
 trait GrpcShardingService extends ZShardingService[Sharding, Any] {

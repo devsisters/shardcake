@@ -1,6 +1,5 @@
 package com.devsisters.sharding.internal
 
-import com.devsisters.sharding.Messenger.Address
 import com.devsisters.sharding.errors.EntityNotManagedByThisPod
 import com.devsisters.sharding.{ ShardId, Sharding }
 import zio._

@@ -184,7 +184,7 @@ object ShardManagerSpec extends ZIOSpecDefault {
     case class PodUnregister(podAddress: PodAddress) extends SimulationEvent
   }
 
-  val config: ULayer[Config] = ZLayer.succeed(Config(300, 0))
+  val config: ULayer[ManagerConfig] = ZLayer.succeed(ManagerConfig(300, 0))
 
   val storage: ULayer[Storage] = ZLayer.succeed(new Storage {
     def getAssignments: Task[Map[ShardId, Option[PodAddress]]]                       = ZIO.succeed(Map.empty)

@@ -90,8 +90,8 @@ object GrpcPods {
         connections <-
           Ref.Synchronized
             .make(Map.empty[PodAddress, (ShardingServiceClient.ZService[Any, Any], Fiber[Throwable, Nothing])])
-            // stop all connection fibers on release
             .withFinalizer(
+              // stop all connection fibers on release
               _.get.flatMap(connections => ZIO.foreachDiscard(connections) { case (_, (_, fiber)) => fiber.interrupt })
             )
       } yield new GrpcPods(config, connections)
