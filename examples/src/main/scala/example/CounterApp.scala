@@ -28,7 +28,7 @@ object CounterApp extends ZIOAppDefault {
       redis,
       KryoSerialization.live,
       StorageRedis.live,
-      ShardManagerClient.live,
+      ShardManagerClient.sttpLive,
       GrpcPods.live,
       Sharding.live,
       GrpcShardingService.live,

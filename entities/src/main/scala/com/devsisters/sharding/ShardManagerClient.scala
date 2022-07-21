@@ -18,13 +18,16 @@ trait ShardManagerClient {
 }
 
 object ShardManagerClient {
-  val live: ZLayer[Config, Throwable, ShardManagerClient] =
-    AsyncHttpClientZioBackend.layer() >>> ZLayer {
+  val live: ZLayer[Config with SttpBackend[Task, ZioStreams with WebSockets], Nothing, ShardManagerClientLive] =
+    ZLayer {
       for {
         sttpClient <- ZIO.service[SttpBackend[Task, ZioStreams with WebSockets]]
         config     <- ZIO.service[Config]
       } yield new ShardManagerClientLive(sttpClient, config)
     }
+
+  val sttpLive: ZLayer[Config, Throwable, ShardManagerClient] =
+    AsyncHttpClientZioBackend.layer() >>> live
 
   val local: ZLayer[Config, Nothing, ShardManagerClient] =
     ZLayer {
