@@ -26,7 +26,7 @@ object ShardManagerClient {
       } yield new ShardManagerClientLive(sttpClient, config)
     }
 
-  val sttpLive: ZLayer[Config, Throwable, ShardManagerClient] =
+  val liveWithSttp: ZLayer[Config, Throwable, ShardManagerClient] =
     AsyncHttpClientZioBackend.layer() >>> live
 
   val local: ZLayer[Config, Nothing, ShardManagerClient] =

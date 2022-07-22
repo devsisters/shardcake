@@ -47,6 +47,17 @@ object GrpcShardingService {
     ZLayer.service[Config].flatMap { config =>
       val builder  = ServerBuilder.forPort(config.get.shardingPort).addService(ProtoReflectionService.newInstance())
       val services = ServiceList.add(new GrpcShardingService {})
-      ServerLayer.fromServiceList(builder, services).unit
+      ServerLayer
+        .fromServiceList(builder, services)
+        .flatMap(_ =>
+          ZLayer.scoped[Sharding](
+            ZIO
+              // register the pod once the grpc server is listening
+              .serviceWithZIO[Sharding](_.register)
+              // unregister the pod before stopping the grpc server
+              .withFinalizer(_ => ZIO.serviceWithZIO[Sharding](_.unregister.orDie))
+          )
+        )
+        .unit
     }
 }
