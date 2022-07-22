@@ -1,6 +1,6 @@
 package example
 
-import com.devsisters.sharding._
+import com.devsisters.shardcake._
 import example.CounterActor.CounterMessage
 import example.CounterActor.CounterMessage.{ DecrementCounter, GetCounter, IncrementCounter }
 import sttp.client3.UriContext

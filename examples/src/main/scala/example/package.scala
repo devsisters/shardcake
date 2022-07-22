@@ -1,4 +1,4 @@
-import com.devsisters.sharding.StorageRedis.fs2Stream
+import com.devsisters.shardcake.StorageRedis.fs2Stream
 import dev.profunktor.redis4cats.connection.RedisClient
 import dev.profunktor.redis4cats.data.RedisCodec
 import dev.profunktor.redis4cats.effect.Log

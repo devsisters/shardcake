@@ -1,8 +1,8 @@
 package example
 
-import com.devsisters.sharding.Messenger.Address
-import com.devsisters.sharding.interfaces.Serialization
-import com.devsisters.sharding.{ EntityType, Messenger, Sharding }
+import com.devsisters.shardcake.Messenger.Address
+import com.devsisters.shardcake.interfaces.Serialization
+import com.devsisters.shardcake.{ EntityType, Messenger, Sharding }
 import zio.{ Dequeue, Ref, Task, ZIO, ZLayer }
 
 object CounterActor {

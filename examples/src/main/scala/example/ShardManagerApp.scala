@@ -1,7 +1,7 @@
 package example
 
-import com.devsisters.sharding._
-import com.devsisters.sharding.interfaces.PodsHealth
+import com.devsisters.shardcake._
+import com.devsisters.shardcake.interfaces.PodsHealth
 import zio._
 
 object ShardManagerApp extends ZIOAppDefault {

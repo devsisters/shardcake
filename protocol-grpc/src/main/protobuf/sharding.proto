@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option java_package = "com.devsisters.sharding.protobuf";
+option java_package = "com.devsisters.shardcake.protobuf";
 
 service ShardingService {
     rpc AssignShards (AssignShardsRequest) returns (AssignShardsResponse) {}
