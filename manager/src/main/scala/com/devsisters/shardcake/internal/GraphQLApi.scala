@@ -1,13 +1,14 @@
-package com.devsisters.shardcake
+package com.devsisters.shardcake.internal
 
 import caliban.GraphQL.graphQL
-import caliban.{ GraphQL, RootResolver }
 import caliban.schema.GenericSchema
+import caliban.{ GraphQL, RootResolver }
 import com.devsisters.shardcake.ShardManager.ShardingEvent
-import zio.{ RIO, URIO, ZIO }
+import com.devsisters.shardcake.{ Pod, PodAddress, ShardId, ShardManager }
 import zio.stream.ZStream
+import zio.{ RIO, URIO, ZIO }
 
-object GraphQLApi extends GenericSchema[ShardManager] {
+private[shardcake] object GraphQLApi extends GenericSchema[ShardManager] {
 
   case class Assignment(shardId: ShardId, pod: Option[PodAddress])
   case class Queries(getAssignments: URIO[ShardManager, List[Assignment]])
