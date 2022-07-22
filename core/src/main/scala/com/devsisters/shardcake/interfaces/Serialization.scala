@@ -4,20 +4,36 @@ import zio.{ Task, ULayer, ZIO, ZLayer }
 
 import java.io.{ ByteArrayInputStream, ByteArrayOutputStream, ObjectInputStream, ObjectOutputStream }
 
+/**
+ * An interface to serialize user messages that will be sent between pods.
+ */
 trait Serialization {
-  def encode(body: Any): Task[Array[Byte]]
+
+  /**
+   * Transforms the given message into binary
+   */
+  def encode(message: Any): Task[Array[Byte]]
+
+  /**
+   * Transform binary back into the given type
+   */
   def decode[A](bytes: Array[Byte]): Task[A]
 }
 
 object Serialization {
+
+  /**
+   * A layer that uses Java serialization for encoding and decoding messages.
+   * This is useful for testing and not recommended to use in production.
+   */
   val javaSerialization: ULayer[Serialization] =
     ZLayer.succeed(new Serialization {
-      def encode(body: Any): Task[Array[Byte]] =
+      def encode(message: Any): Task[Array[Byte]] =
         ZIO.scoped {
           val stream = new ByteArrayOutputStream()
           ZIO
             .fromAutoCloseable(ZIO.attempt(new ObjectOutputStream(stream)))
-            .flatMap(oos => ZIO.attempt(oos.writeObject(body)))
+            .flatMap(oos => ZIO.attempt(oos.writeObject(message)))
             .as(stream.toByteArray)
         }
 

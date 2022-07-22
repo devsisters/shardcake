@@ -13,8 +13,8 @@ object KryoSerialization {
         KryoPool.withByteArrayOutputStream(poolSize, kryoInstantiator)
       }.map(kryoPool =>
         new Serialization {
-          def encode(body: Any): Task[Array[Byte]]   = ZIO.attempt(kryoPool.toBytesWithClass(body))
-          def decode[A](bytes: Array[Byte]): Task[A] = ZIO.attempt(kryoPool.fromBytes(bytes).asInstanceOf[A])
+          def encode(message: Any): Task[Array[Byte]] = ZIO.attempt(kryoPool.toBytesWithClass(message))
+          def decode[A](bytes: Array[Byte]): Task[A]  = ZIO.attempt(kryoPool.fromBytes(bytes).asInstanceOf[A])
         }
       )
     }
