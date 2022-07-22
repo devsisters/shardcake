@@ -18,15 +18,13 @@ inThisBuild(
     crossScalaVersions := allScala,
     organization       := "com.devsisters",
 //    homepage                 := Some(url("TODO")),
-    licenses           := List(
-      "Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")
+    licenses           := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
+    scmInfo            := Some(
+      ScmInfo(
+        url("https://github.com/devsisters/shardcake"),
+        "scm:git:git@github.com:devsisters/shardcake.git"
+      )
     ),
-//    scmInfo                  := Some(
-//      ScmInfo(
-//        url("TODO"),
-//        "TODO"
-//      )
-//    ),
     developers         := List(
       Developer(
         "ghostdogpr",
