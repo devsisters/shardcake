@@ -83,6 +83,10 @@ class GrpcPods(
 }
 
 object GrpcPods {
+
+  /**
+   * A layer that creates an instance of Pods that communicates using the gRPC protocol.
+   */
   val live: ZLayer[GrpcConfig, Throwable, Pods] =
     ZLayer.scoped {
       for {

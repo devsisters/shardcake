@@ -7,6 +7,10 @@ import zio._
 import zio.cache.{ Cache, Lookup }
 
 object K8sPodsHealth {
+
+  /**
+   * A layer for PodsHealth that checks if the node exists in Kubernetes.
+   */
   val live: URLayer[Pods with K8sConfig, PodsHealth] =
     ZLayer {
       for {

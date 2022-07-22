@@ -11,6 +11,9 @@ import zio.{ Task, ZIO, ZLayer }
 object StorageRedis {
   type fs2Stream[A] = fs2.Stream[Task, A]
 
+  /**
+   * A layer that returns a Storage implementation using Redis
+   */
   val live
     : ZLayer[RedisCommands[Task, String, String] with PubSubCommands[fs2Stream, String, String], Nothing, Storage] =
     ZLayer {

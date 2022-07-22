@@ -5,6 +5,10 @@ import com.twitter.chill.{ KryoInstantiator, KryoPool, ScalaKryoInstantiator }
 import zio.{ Task, ZIO, ZLayer }
 
 object KryoSerialization {
+
+  /**
+   * A layer that returns a serialization implementation using the Kryo library
+   */
   val live: ZLayer[Any, Throwable, Serialization] =
     ZLayer {
       ZIO.attempt {

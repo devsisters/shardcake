@@ -34,7 +34,7 @@ trait GrpcShardingService extends ZShardingService[Sharding, Any] {
   def pingShards(request: PingShardsRequest): ZIO[Sharding, Status, PingShardsResponse] =
     ZIO.succeed(PingShardsResponse())
 
-  protected def mapErrorToStatusWithInternalDetails: Function[Throwable, Status] = {
+  private def mapErrorToStatusWithInternalDetails: Function[Throwable, Status] = {
     case e: StatusException           => e.getStatus
     case e: StatusRuntimeException    => e.getStatus
     case e: EntityNotManagedByThisPod => Status.RESOURCE_EXHAUSTED.withCause(e)
@@ -43,6 +43,11 @@ trait GrpcShardingService extends ZShardingService[Sharding, Any] {
 }
 
 object GrpcShardingService {
+
+  /**
+   * A layer that creates a gRPC server that exposes the Pods API.
+   * It also takes care of registering the pod to the Shard Manager once the API is started, and unregistering it before stopping.
+   */
   val live: ZLayer[Config with Sharding, Throwable, Unit] =
     ZLayer.service[Config].flatMap { config =>
       val builder  = ServerBuilder.forPort(config.get.shardingPort).addService(ProtoReflectionService.newInstance())
