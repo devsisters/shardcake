@@ -15,9 +15,9 @@ class Sharding(
   address: PodAddress,
   numberOfShards: Int,
   shardAssignments: Ref[Map[ShardId, PodAddress]],
+  entityStates: Ref[Map[String, EntityState]],
   singletons: Ref.Synchronized[List[(String, UIO[Nothing], Option[Fiber[Nothing, Nothing]])]],
-  entityStates: Ref.Synchronized[Map[String, EntityState]],
-  promises: Ref.Synchronized[Map[String, Promise[Throwable, Option[Any]]]], // promise for each pending reply,
+  replyPromises: Ref.Synchronized[Map[String, Promise[Throwable, Option[Any]]]], // promise for each pending reply,
   lastUnhealthyNodeReported: Ref[OffsetDateTime],
   isShuttingDownRef: Ref[Boolean],
   shardManager: ShardManagerClient,
@@ -143,18 +143,18 @@ class Sharding(
     )
 
   private[shardcake] def initReply(id: String, promise: Promise[Throwable, Option[Any]], context: String): UIO[Unit] =
-    promises.update(_.updated(id, promise)) <*
+    replyPromises.update(_.updated(id, promise)) <*
       promise.await
         .timeoutFail(new Exception(s"Promise was not completed in time. $context"))(12 seconds) // > send timeout
         .onError(cause => abortReply(id, cause.squash))
         .forkDaemon
 
   private def abortReply(id: String, ex: Throwable): UIO[Unit] =
-    promises.updateZIO(promises => ZIO.whenCase(promises.get(id)) { case Some(p) => p.fail(ex) }.as(promises - id))
+    replyPromises.updateZIO(promises => ZIO.whenCase(promises.get(id)) { case Some(p) => p.fail(ex) }.as(promises - id))
 
-  def reply[Reply](reply: Reply, replyTo: Replier[Reply]): UIO[Unit] =
-    promises.updateZIO(promises =>
-      ZIO.whenCase(promises.get(replyTo.id)) { case Some(p) => p.succeed(Some(reply)) }.as(promises - replyTo.id)
+  def reply[Reply](reply: Reply, replier: Replier[Reply]): UIO[Unit] =
+    replyPromises.updateZIO(promises =>
+      ZIO.whenCase(promises.get(replier.id)) { case Some(p) => p.succeed(Some(reply)) }.as(promises - replier.id)
     )
 
   def registerEntity[R, Req: Tag](
@@ -262,6 +262,7 @@ object Sharding {
         shardManager              <- ZIO.service[ShardManagerClient]
         storage                   <- ZIO.service[Storage]
         shardsCache               <- Ref.make(Map.empty[ShardId, PodAddress])
+        entityStates              <- Ref.make[Map[String, EntityState]](Map())
         singletons                <- Ref.Synchronized
                                        .make[List[(String, UIO[Nothing], Option[Fiber[Nothing, Nothing]])]](Nil)
                                        .withFinalizer(
@@ -272,7 +273,6 @@ object Sharding {
                                            }
                                          )
                                        )
-        entityStates              <- Ref.Synchronized.make[Map[String, EntityState]](Map())
         promises                  <- Ref.Synchronized.make[Map[String, Promise[Throwable, Option[Any]]]](Map())
         cdt                       <- Clock.currentDateTime
         lastUnhealthyNodeReported <- Ref.make(cdt)
@@ -281,8 +281,8 @@ object Sharding {
                                        PodAddress(config.selfHost, config.shardingPort),
                                        config.numberOfShards,
                                        shardsCache,
-                                       singletons,
                                        entityStates,
+                                       singletons,
                                        promises,
                                        lastUnhealthyNodeReported,
                                        shuttingDown,

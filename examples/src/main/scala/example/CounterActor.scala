@@ -9,24 +9,24 @@ object CounterActor {
   sealed trait CounterMessage
 
   object CounterMessage {
-    case class GetCounter(replyTo: Replier[Int]) extends CounterMessage
+    case class GetCounter(replier: Replier[Int]) extends CounterMessage
     case object IncrementCounter                 extends CounterMessage
     case object DecrementCounter                 extends CounterMessage
   }
 
   object Counter extends EntityType[CounterMessage]("counter")
 
-  val behavior: (String, Dequeue[CounterMessage]) => RIO[Sharding, Nothing] = { case (_, queue) =>
-    Ref
-      .make(0)
-      .flatMap(state =>
-        queue.take.flatMap {
-          case CounterMessage.GetCounter(replyTo) => state.get.flatMap(replyTo.reply)
-          case CounterMessage.IncrementCounter    => state.update(_ + 1)
-          case CounterMessage.DecrementCounter    => state.update(_ - 1)
-        }.forever
-      )
-  }
+  def behavior(entityId: String, messages: Dequeue[CounterMessage]): RIO[Sharding, Nothing] =
+    ZIO.logInfo(s"Started entity $entityId") *>
+      Ref
+        .make(0)
+        .flatMap(state =>
+          messages.take.flatMap {
+            case CounterMessage.GetCounter(replier) => state.get.flatMap(replier.reply)
+            case CounterMessage.IncrementCounter    => state.update(_ + 1)
+            case CounterMessage.DecrementCounter    => state.update(_ - 1)
+          }.forever
+        )
 
   val live: ZLayer[Sharding with Serialization, Nothing, Messenger[CounterMessage]] =
     ZLayer.scoped {
