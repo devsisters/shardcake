@@ -16,14 +16,20 @@ private[shardcake] trait EntityManager[-Req] {
 }
 
 private[shardcake] object EntityManager {
-  def make[Req: Tag](
-    behavior: (String, Queue[Req]) => Task[Nothing],
+  def make[R, Req: Tag](
+    behavior: (String, Queue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req],
     sharding: Sharding
-  ): UIO[EntityManager[Req]] =
+  ): URIO[R, EntityManager[Req]] =
     for {
       entities <- Ref.Synchronized.make[Map[String, (Option[Queue[Req]], Fiber[Nothing, Unit])]](Map())
-    } yield new EntityManagerLive[Req](behavior, terminateMessage, entities, sharding)
+      env      <- ZIO.environment[R]
+    } yield new EntityManagerLive[Req](
+      (entityId: String, queue: Queue[Req]) => behavior(entityId, queue).provideEnvironment(env),
+      terminateMessage,
+      entities,
+      sharding
+    )
 
   class EntityManagerLive[Req](
     behavior: (String, Queue[Req]) => Task[Nothing],

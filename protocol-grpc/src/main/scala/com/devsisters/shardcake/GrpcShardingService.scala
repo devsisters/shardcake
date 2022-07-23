@@ -46,23 +46,11 @@ object GrpcShardingService {
 
   /**
    * A layer that creates a gRPC server that exposes the Pods API.
-   * It also takes care of registering the pod to the Shard Manager once the API is started, and unregistering it before stopping.
    */
   val live: ZLayer[Config with Sharding, Throwable, Unit] =
     ZLayer.service[Config].flatMap { config =>
       val builder  = ServerBuilder.forPort(config.get.shardingPort).addService(ProtoReflectionService.newInstance())
       val services = ServiceList.add(new GrpcShardingService {})
-      ServerLayer
-        .fromServiceList(builder, services)
-        .flatMap(_ =>
-          ZLayer.scoped[Sharding](
-            ZIO
-              // register the pod once the grpc server is listening
-              .serviceWithZIO[Sharding](_.register)
-              // unregister the pod before stopping the grpc server
-              .withFinalizer(_ => ZIO.serviceWithZIO[Sharding](_.unregister.orDie))
-          )
-        )
-        .unit
+      ServerLayer.fromServiceList(builder, services).unit
     }
 }

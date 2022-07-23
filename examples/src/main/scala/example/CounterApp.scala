@@ -12,26 +12,28 @@ object CounterApp extends ZIOAppDefault {
   private val grpcConfig = ZLayer.succeed(GrpcConfig(32 * 1024 * 1024))
 
   def run: Task[Unit] =
-    (for {
-      counter <- ZIO.service[Messenger[CounterMessage]]
-      _       <- counter.tell("c1")(IncrementCounter)
-      _       <- counter.tell("c1")(DecrementCounter)
-      _       <- counter.tell("c1")(IncrementCounter)
-      _       <- counter.tell("c1")(IncrementCounter)
-      _       <- counter.tell("c2")(IncrementCounter)
-      _       <- counter.ask("c1")(GetCounter).debug
-      _       <- counter.ask("c2")(GetCounter).debug
-    } yield ())
-      .provide(
-        config,
-        grpcConfig,
-        redis,
-        KryoSerialization.live,
-        StorageRedis.live,
-        ShardManagerClient.liveWithSttp,
-        GrpcPods.live,
-        Sharding.live,
-        GrpcShardingService.live,
-        CounterActor.live
-      )
+    ZIO.scoped {
+      for {
+        _       <- Sharding.registerScoped
+        counter <- ZIO.service[Messenger[CounterMessage]]
+        _       <- counter.sendDiscard("c1")(IncrementCounter)
+        _       <- counter.sendDiscard("c1")(DecrementCounter)
+        _       <- counter.sendDiscard("c1")(IncrementCounter)
+        _       <- counter.sendDiscard("c1")(IncrementCounter)
+        _       <- counter.sendDiscard("c2")(IncrementCounter)
+        _       <- counter.send("c1")(GetCounter).debug
+        _       <- counter.send("c2")(GetCounter).debug
+      } yield ()
+    }.provide(
+      config,
+      grpcConfig,
+      redis,
+      KryoSerialization.live,
+      StorageRedis.live,
+      ShardManagerClient.liveWithSttp,
+      GrpcPods.live,
+      Sharding.live,
+      GrpcShardingService.live,
+      CounterActor.live
+    )
 }

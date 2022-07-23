@@ -1,8 +1,8 @@
 package com.devsisters.shardcake
 
-import com.devsisters.shardcake.Messenger.Address
+import com.devsisters.shardcake.Messenger.Replier
 import com.devsisters.shardcake.Sharding.EntityState
-import com.devsisters.shardcake.errors.{ AskTimeoutException, EntityNotManagedByThisPod, PodUnavailable }
+import com.devsisters.shardcake.errors.{ EntityNotManagedByThisPod, PodUnavailable, SendTimeoutException }
 import com.devsisters.shardcake.interfaces.Pods.BinaryMessage
 import com.devsisters.shardcake.interfaces.{ Pods, Serialization, Storage }
 import com.devsisters.shardcake.internal.EntityManager
@@ -145,23 +145,23 @@ class Sharding(
   private[shardcake] def initReply(id: String, promise: Promise[Throwable, Option[Any]], context: String): UIO[Unit] =
     promises.update(_.updated(id, promise)) <*
       promise.await
-        .timeoutFail(new Exception(s"Promise was not completed in time. $context"))(12 seconds) // > ask timeout
+        .timeoutFail(new Exception(s"Promise was not completed in time. $context"))(12 seconds) // > send timeout
         .onError(cause => abortReply(id, cause.squash))
         .forkDaemon
 
   private def abortReply(id: String, ex: Throwable): UIO[Unit] =
     promises.updateZIO(promises => ZIO.whenCase(promises.get(id)) { case Some(p) => p.fail(ex) }.as(promises - id))
 
-  def reply[Reply](reply: Reply, replyTo: Address[Reply]): UIO[Unit] =
+  def reply[Reply](reply: Reply, replyTo: Replier[Reply]): UIO[Unit] =
     promises.updateZIO(promises =>
       ZIO.whenCase(promises.get(replyTo.id)) { case Some(p) => p.succeed(Some(reply)) }.as(promises - replyTo.id)
     )
 
-  def registerEntity[Req: Tag](
+  def registerEntity[R, Req: Tag](
     entityType: EntityType[Req],
-    behavior: (String, Dequeue[Req]) => Task[Nothing],
+    behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
-  ): URIO[Scope with Serialization, Messenger[Req]] =
+  ): URIO[Scope with Serialization with R, Messenger[Req]] =
     for {
       serialization <- ZIO.service[Serialization]
       entityManager <- EntityManager.make(behavior, terminateMessage, self)
@@ -189,17 +189,17 @@ class Sharding(
                          .forkScoped
     } yield new Messenger[Req] {
 
-      def tell(entityId: String)(msg: Req): UIO[Unit] =
+      def sendDiscard(entityId: String)(msg: Req): UIO[Unit] =
         sendMessage(entityId, msg, None).timeout(10 seconds).forkDaemon.unit
 
-      def ask[Res](entityId: String)(msg: Address[Res] => Req): Task[Res] =
+      def send[Res](entityId: String)(msg: Replier[Res] => Req): Task[Res] =
         Random.nextUUID.flatMap { uuid =>
-          val body = msg(Address(uuid.toString))
+          val body = msg(Replier(uuid.toString))
           sendMessage[Res](entityId, body, Some(uuid.toString)).flatMap {
             case Some(value) => ZIO.succeed(value)
-            case None        => ZIO.fail(new Exception(s"Ask returned nothing, entityId=$entityId, body=$body"))
+            case None        => ZIO.fail(new Exception(s"Send returned nothing, entityId=$entityId, body=$body"))
           }
-            .timeoutFail(AskTimeoutException(entityType, entityId, body))(10 seconds)
+            .timeoutFail(SendTimeoutException(entityType, entityId, body))(10 seconds)
             .interruptible
         }
 
@@ -293,6 +293,15 @@ object Sharding {
         _                         <- sharding.refreshAssignments
       } yield sharding
     }
+
+  def register: RIO[Sharding, Unit] =
+    ZIO.serviceWithZIO[Sharding](_.register)
+
+  def unregister: RIO[Sharding, Unit] =
+    ZIO.serviceWithZIO[Sharding](_.unregister)
+
+  def registerScoped: RIO[Sharding with Scope, Unit] =
+    Sharding.register.withFinalizer(_ => Sharding.unregister.ignore)
 
   case class EntityState(
     binaryQueue: Queue[(BinaryMessage, Promise[Throwable, Option[Array[Byte]]])],

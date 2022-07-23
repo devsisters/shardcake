@@ -1,13 +1,15 @@
 package com.devsisters.shardcake
 
-import com.devsisters.shardcake.Messenger.Address
-import zio.{ Task, UIO }
+import com.devsisters.shardcake.Messenger.Replier
+import zio.{ Task, UIO, URIO, ZIO }
 
 trait Messenger[-Msg] {
-  def tell(entityId: String)(msg: Msg): UIO[Unit]
-  def ask[Res](entityId: String)(msg: Address[Res] => Msg): Task[Res]
+  def sendDiscard(entityId: String)(msg: Msg): UIO[Unit]
+  def send[Res](entityId: String)(msg: Replier[Res] => Msg): Task[Res]
 }
 
 object Messenger {
-  case class Address[-R](id: String)
+  case class Replier[-R](id: String) { self =>
+    def reply(reply: R): URIO[Sharding, Unit] = ZIO.serviceWithZIO[Sharding](_.reply(reply, self))
+  }
 }
