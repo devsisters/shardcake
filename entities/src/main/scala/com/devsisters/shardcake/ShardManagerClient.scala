@@ -10,6 +10,9 @@ import sttp.client3.SttpBackend
 import sttp.client3.asynchttpclient.zio.AsyncHttpClientZioBackend
 import zio._
 
+/**
+ * An interface to communicate with the Shard Manager API
+ */
 trait ShardManagerClient {
   def register(podAddress: PodAddress): Task[Unit]
   def unregister(podAddress: PodAddress): Task[Unit]
@@ -18,6 +21,11 @@ trait ShardManagerClient {
 }
 
 object ShardManagerClient {
+
+  /**
+   * A layer that returns a client for the Shard Manager API.
+   * It requires an sttp backend. If you don't want to use your own backend, simply use `liveWithSttp`.
+   */
   val live: ZLayer[Config with SttpBackend[Task, ZioStreams with WebSockets], Nothing, ShardManagerClientLive] =
     ZLayer {
       for {
@@ -26,9 +34,16 @@ object ShardManagerClient {
       } yield new ShardManagerClientLive(sttpClient, config)
     }
 
+  /**
+   * A layer that returns a client for the Shard Manager API.
+   * It contains its own sttp backend so you don't need to provide one.
+   */
   val liveWithSttp: ZLayer[Config, Throwable, ShardManagerClient] =
     AsyncHttpClientZioBackend.layer() >>> live
 
+  /**
+   * A layer that mocks the Shard Manager, useful for testing with a single pod.
+   */
   val local: ZLayer[Config, Nothing, ShardManagerClient] =
     ZLayer {
       for {

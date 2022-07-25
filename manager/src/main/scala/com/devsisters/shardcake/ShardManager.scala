@@ -10,6 +10,9 @@ import zio.stream.ZStream
 
 import scala.annotation.tailrec
 
+/**
+ * A component in charge of assigning and unassigning shards to/from pods
+ */
 class ShardManager(
   stateRef: Ref.Synchronized[ShardManagerState],
   rebalanceSemaphore: Semaphore,
@@ -161,6 +164,10 @@ class ShardManager(
 }
 
 object ShardManager {
+
+  /**
+   * A layer that starts the Shard Manager process
+   */
   val live: ZLayer[PodsHealth with Pods with Storage with ManagerConfig, Throwable, ShardManager] =
     ZLayer {
       for {

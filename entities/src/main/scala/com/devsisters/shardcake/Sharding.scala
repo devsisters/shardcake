@@ -11,7 +11,11 @@ import zio.stream.ZStream
 
 import java.time.OffsetDateTime
 
-class Sharding(
+/**
+ * A component that takes care of communicating with sharded entities.
+ * See the companion object for layer creation and public methods.
+ */
+class Sharding private (
   address: PodAddress,
   numberOfShards: Int,
   shardAssignments: Ref[Map[ShardId, PodAddress]],
@@ -106,7 +110,7 @@ class Sharding(
   def getNumberOfPods: UIO[Int] =
     shardAssignments.get.map(_.values.toSet.size)
 
-  private val refreshAssignments: ZIO[Scope, Nothing, Unit] = {
+  private[shardcake] val refreshAssignments: ZIO[Scope, Nothing, Unit] = {
     val assignmentStream =
       ZStream.fromZIO(
         shardManager.getAssignments.map(_ -> true) // first, get the assignments from the shard manager directly
@@ -166,7 +170,7 @@ class Sharding(
       serialization <- ZIO.service[Serialization]
       entityManager <- EntityManager.make(behavior, terminateMessage, self)
       binaryQueue   <- Queue.unbounded[(BinaryMessage, Promise[Throwable, Option[Array[Byte]]])].withFinalizer(_.shutdown)
-      _             <- entityStates.update(_.updated(entityType.value, EntityState(binaryQueue, entityManager)))
+      _             <- entityStates.update(_.updated(entityType.name, EntityState(binaryQueue, entityManager)))
       _             <- ZStream
                          .fromQueue(binaryQueue)
                          .mapZIO { case (msg, p) =>
@@ -225,7 +229,7 @@ class Sharding(
                                   .encode(msg)
                                   .flatMap(bytes =>
                                     pods
-                                      .sendMessage(pod, BinaryMessage(entityId, entityType.value, bytes, replyId))
+                                      .sendMessage(pod, BinaryMessage(entityId, entityType.name, bytes, replyId))
                                       .tapError {
                                         ZIO.whenCase(_) { case PodUnavailable(pod) =>
                                           val notify = Clock.currentDateTime.flatMap(cdt =>
@@ -254,6 +258,14 @@ class Sharding(
 }
 
 object Sharding {
+  private[shardcake] case class EntityState(
+    binaryQueue: Queue[(BinaryMessage, Promise[Throwable, Option[Array[Byte]]])],
+    entityManager: EntityManager[Nothing]
+  )
+
+  /**
+   * A layer that sets up sharding communication between pods.
+   */
   val live: ZLayer[Pods with ShardManagerClient with Storage with Config, Throwable, Sharding] =
     ZLayer.scoped {
       for {
@@ -294,17 +306,47 @@ object Sharding {
       } yield sharding
     }
 
+  /**
+   * Notify the shard manager that shards can now be assigned to this pod.
+   */
   def register: RIO[Sharding, Unit] =
     ZIO.serviceWithZIO[Sharding](_.register)
 
+  /**
+   * Notify the shard manager that shards must be unassigned from this pod.
+   */
   def unregister: RIO[Sharding, Unit] =
     ZIO.serviceWithZIO[Sharding](_.unregister)
 
+  /**
+   * Same as `register`, but will automatically call `unregister` when the `Scope` is terminated.
+   */
   def registerScoped: RIO[Sharding with Scope, Unit] =
     Sharding.register.withFinalizer(_ => Sharding.unregister.ignore)
 
-  case class EntityState(
-    binaryQueue: Queue[(BinaryMessage, Promise[Throwable, Option[Array[Byte]]])],
-    entityManager: EntityManager[Nothing]
-  )
+  /**
+   * Start a computation that is guaranteed to run only on a single pod.
+   * Each pod should call `registerSingleton` but only a single pod will actually run it at any given time.
+   */
+  def registerSingleton(name: String, run: UIO[Nothing]): URIO[Sharding, Unit] =
+    ZIO.serviceWithZIO[Sharding](_.registerSingleton(name, run))
+
+  /**
+   * Register a new entity type, allowing pods to send messages to entities of this type.
+   * It takes a `behavior` which is a function from an entity ID and a queue of messages to a ZIO computation that runs forever and consumes those messages.
+   * You can use `ZIO.interrupt` from the behavior to stop it (it will be restarted the next time the entity receives a message).
+   * If provided, the optional `terminateMessage` will be sent to the entity before it is stopped, allowing for cleanup logic.
+   */
+  def registerEntity[R, Req: Tag](
+    entityType: EntityType[Req],
+    behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
+    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
+  ): URIO[Sharding with Scope with Serialization with R, Messenger[Req]] =
+    ZIO.serviceWithZIO[Sharding](_.registerEntity[R, Req](entityType, behavior, terminateMessage))
+
+  /**
+   * Get the number of pods currently registered to the Shard Manager
+   */
+  def getNumberOfPods: RIO[Sharding, Int] =
+    ZIO.serviceWithZIO[Sharding](_.getNumberOfPods)
 }
