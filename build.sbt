@@ -77,9 +77,7 @@ lazy val manager = project
     libraryDependencies ++=
       Seq(
         "com.github.ghostdogpr" %% "caliban"          % calibanVersion,
-        "com.github.ghostdogpr" %% "caliban-zio-http" % calibanVersion,
-        "dev.zio"               %% "zio-test"         % zioVersion % Test,
-        "dev.zio"               %% "zio-test-sbt"     % zioVersion % Test
+        "com.github.ghostdogpr" %% "caliban-zio-http" % calibanVersion
       )
   )
 
@@ -119,12 +117,9 @@ lazy val storageRedis = project
   .settings(
     libraryDependencies ++=
       Seq(
-        "dev.profunktor" %% "redis4cats-effects"        % redis4catsVersion,
-        "dev.profunktor" %% "redis4cats-streams"        % redis4catsVersion,
-        "dev.zio"        %% "zio-interop-cats"          % zioCatsInteropVersion,
-        "dev.zio"        %% "zio-test"                  % zioVersion            % Test,
-        "dev.zio"        %% "zio-test-sbt"              % zioVersion            % Test,
-        "com.dimafeng"   %% "testcontainers-scala-core" % testContainersVersion % Test
+        "dev.profunktor" %% "redis4cats-effects" % redis4catsVersion,
+        "dev.profunktor" %% "redis4cats-streams" % redis4catsVersion,
+        "dev.zio"        %% "zio-interop-cats"   % zioCatsInteropVersion
       )
   )
 
@@ -183,6 +178,12 @@ lazy val protobuf = Seq(
 lazy val commonSettings = Def.settings(
   resolvers ++= Resolver.sonatypeOssRepos("snapshots"),
   testFrameworks := Seq(new TestFramework("zio.test.sbt.ZTestFramework")),
+  libraryDependencies ++=
+    Seq(
+      "dev.zio"      %% "zio-test"                  % zioVersion            % Test,
+      "dev.zio"      %% "zio-test-sbt"              % zioVersion            % Test,
+      "com.dimafeng" %% "testcontainers-scala-core" % testContainersVersion % Test
+    ),
   Test / fork    := true,
   scalacOptions ++= Seq(
     "-deprecation",
