@@ -10,7 +10,7 @@ on:
 
 jobs:
   lint:
-    runs-on: ubuntu-20.04
+    runs-on: [self-hosted, common]
     strategy:
       fail-fast: false
     steps:
