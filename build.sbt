@@ -18,7 +18,7 @@ inThisBuild(
     scalaVersion       := scala213,
     crossScalaVersions := allScala,
     organization       := "com.devsisters",
-    homepage           := Some(url("TODO")),
+//    homepage                 := Some(url("TODO")),
     licenses           := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
     scmInfo            := Some(
       ScmInfo(
