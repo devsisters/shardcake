@@ -72,6 +72,7 @@ object EndToEndSpec extends ZIOSpecDefault {
             _       <- counter.sendDiscard("c1")(IncrementCounter)
             _       <- counter.sendDiscard("c1")(IncrementCounter)
             _       <- counter.sendDiscard("c2")(IncrementCounter)
+            _       <- Clock.sleep(1 second)
             c1      <- counter.send("c1")(GetCounter.apply)
             c2      <- counter.send("c2")(GetCounter.apply)
           } yield assertTrue(c1 == 2) && assertTrue(c2 == 1)
