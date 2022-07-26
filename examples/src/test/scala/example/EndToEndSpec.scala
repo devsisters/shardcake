@@ -90,8 +90,9 @@ object EndToEndSpec extends ZIOSpecDefault {
       shardManagerServer,
       container,
       redis,
-      ZLayer.succeed(Config(10, "localhost", 8888, uri"http://localhost:8080/api/graphql", "1")),
-      ZLayer.succeed(GrpcConfig(32 * 1024 * 1024)),
-      ZLayer.succeed(ManagerConfig(10, 8080))
+      ZLayer.succeed(Config.default),
+      ZLayer.succeed(GrpcConfig.default),
+      ZLayer.succeed(ManagerConfig.default),
+      ZLayer.succeed(RedisConfig.default)
     ) @@ sequential @@ withLiveClock
 }

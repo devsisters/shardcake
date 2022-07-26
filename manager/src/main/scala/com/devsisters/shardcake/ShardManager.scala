@@ -19,7 +19,8 @@ class ShardManager(
   eventsHub: Hub[ShardingEvent],
   healthApi: PodsHealth,
   podApi: Pods,
-  stateRepository: Storage
+  stateRepository: Storage,
+  config: ManagerConfig
 ) {
 
   def getAssignments: UIO[Map[ShardId, Option[PodAddress]]] =
@@ -87,7 +88,7 @@ class ShardManager(
                                                            .foreachPar(assignments.keySet ++ unassignments.keySet)(pod =>
                                                              podApi
                                                                .ping(pod)
-                                                               .timeout(3 seconds)
+                                                               .timeout(config.pingTimeout)
                                                                .someOrFailException
                                                                .fold(_ => Set(pod), _ => Set.empty)
                                                            )
@@ -128,8 +129,8 @@ class ShardManager(
         // check if failing pods are still up
         _                                             <- ZIO.foreachDiscard(failedPods)(notifyUnhealthyPod).forkDaemon
         _                                             <- ZIO.logWarning(s"Failed to rebalance pods: $failedPods").when(failedPods.nonEmpty)
-        // retry rebalancing 10 seconds later if there was any failure
-        _                                             <- (Clock.sleep(10 seconds) *> rebalance(rebalanceImmediately)).forkDaemon
+        // retry rebalancing later if there was any failure
+        _                                             <- (Clock.sleep(config.rebalanceRetryInterval) *> rebalance(rebalanceImmediately)).forkDaemon
                                                            .when(failedPods.nonEmpty && rebalanceImmediately)
         // persist state changes to Redis
         _                                             <- persistAssignments.forkDaemon.when(areChanges)
@@ -137,7 +138,9 @@ class ShardManager(
     }
 
   private def withRetry[E, A](zio: IO[E, A]): UIO[Unit] =
-    zio.retry[Any, Any](Schedule.spaced(3 seconds) && Schedule.recurs(100)).ignore
+    zio
+      .retry[Any, Any](Schedule.spaced(config.persistRetryInterval) && Schedule.recurs(config.persistRetryCount))
+      .ignore
 
   private def persistAssignments: UIO[Unit] =
     withRetry(
@@ -192,12 +195,15 @@ object ShardManager {
         rebalanceSemaphore <- Semaphore.make(1)
         eventsHub          <- Hub.unbounded[ShardingEvent]
         shardManager        =
-          new ShardManager(state, rebalanceSemaphore, eventsHub, healthApi, podApi, stateRepository)
+          new ShardManager(state, rebalanceSemaphore, eventsHub, healthApi, podApi, stateRepository, config)
         _                  <- shardManager.persistPods.forkDaemon
         // rebalance immediately if there are unassigned shards
         _                  <- shardManager.rebalance(rebalanceImmediately = initialState.unassignedShards.nonEmpty).forkDaemon
-        // start a regular rebalance every 20 seconds
-        _                  <- shardManager.rebalance(rebalanceImmediately = false).repeat(Schedule.spaced(20 seconds)).forkDaemon
+        // start a regular rebalance at the given interval
+        _                  <- shardManager
+                                .rebalance(rebalanceImmediately = false)
+                                .repeat(Schedule.spaced(config.rebalanceInterval))
+                                .forkDaemon
         _                  <- shardManager.getShardingEvents.mapZIO(event => ZIO.logInfo(event.toString)).runDrain.forkDaemon
         _                  <- ZIO.logInfo("Shard Manager loaded")
       } yield shardManager

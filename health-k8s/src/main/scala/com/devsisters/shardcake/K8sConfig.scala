@@ -10,3 +10,7 @@ import zio._
  * @param namespace namespace to query pods from (if None, query all namespaces)
  */
 case class K8sConfig(cacheSize: Int, cacheDuration: Duration, namespace: Option[K8sNamespace])
+
+object K8sConfig {
+  val default: K8sConfig = K8sConfig(500, 3 seconds, None)
+}

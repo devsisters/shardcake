@@ -23,8 +23,7 @@ object Server {
                          Http.collectHttp[Request] {
                            case _ -> !! / "health"          => Http.succeed(Response.ok)
                            case _ -> !! / "api" / "graphql" => ZHttpAdapter.makeHttpService(interpreter)
-                           case _ -> !! / "ws" / "graphql"  =>
-                             ZHttpAdapter.makeWebSocketService(interpreter, keepAliveTime = Some(30 seconds))
+                           case _ -> !! / "ws" / "graphql"  => ZHttpAdapter.makeWebSocketService(interpreter)
                          } @@ cors()
                        )
                        .forever

@@ -4,10 +4,9 @@ import com.devsisters.shardcake.CounterActor.CounterMessage._
 import com.devsisters.shardcake.CounterActor._
 import com.devsisters.shardcake.Messenger.Replier
 import com.devsisters.shardcake.interfaces.{ Pods, Serialization, Storage }
-import sttp.client3.UriContext
+import zio._
 import zio.test.TestAspect.{ sequential, withLiveClock }
 import zio.test._
-import zio._
 
 object ShardingSpec extends ZIOSpecDefault {
   def spec: Spec[TestEnvironment with Scope, Any] =
@@ -45,7 +44,7 @@ object ShardingSpec extends ZIOSpecDefault {
       Pods.noop,
       ShardManagerClient.local,
       Storage.memory,
-      ZLayer.succeed(Config(10, "localhost", 8888, uri"http://localhost", "1"))
+      ZLayer.succeed(Config.default)
     ) @@ sequential @@ withLiveClock
 }
 
