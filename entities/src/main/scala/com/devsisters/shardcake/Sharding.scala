@@ -17,7 +17,7 @@ import java.time.OffsetDateTime
  */
 class Sharding private (
   address: PodAddress,
-  numberOfShards: Int,
+  config: Config,
   shardAssignments: Ref[Map[ShardId, PodAddress]],
   entityStates: Ref[Map[String, EntityState]],
   singletons: Ref.Synchronized[List[(String, UIO[Nothing], Option[Fiber[Nothing, Nothing]])]],
@@ -29,7 +29,7 @@ class Sharding private (
   storage: Storage
 ) { self =>
   private[shardcake] def getShardId(entityId: String): ShardId =
-    math.abs(entityId.hashCode % numberOfShards) + 1
+    math.abs(entityId.hashCode % config.numberOfShards) + 1
 
   val register: Task[Unit] =
     ZIO.logDebug(s"Registering pod $address to Shard Manager") *>
@@ -128,7 +128,11 @@ class Sharding private (
                map.filter { case (_, pod) => pod == address }
            ))
     }.runDrain
-  }.retry(Schedule.fixed(5 seconds)).interruptible.forkDaemon.withFinalizer(_.interrupt).unit
+  }.retry(Schedule.fixed(config.refreshAssignmentsRetryInterval))
+    .interruptible
+    .forkDaemon
+    .withFinalizer(_.interrupt)
+    .unit
 
   private[shardcake] def isShuttingDown: UIO[Boolean] =
     isShuttingDownRef.get
@@ -149,7 +153,8 @@ class Sharding private (
   private[shardcake] def initReply(id: String, promise: Promise[Throwable, Option[Any]], context: String): UIO[Unit] =
     replyPromises.update(_.updated(id, promise)) <*
       promise.await
-        .timeoutFail(new Exception(s"Promise was not completed in time. $context"))(12 seconds) // > send timeout
+        // timeout slightly > send timeout
+        .timeoutFail(new Exception(s"Promise was not completed in time. $context"))(config.sendTimeout.plusSeconds(1))
         .onError(cause => abortReply(id, cause.squash))
         .forkDaemon
 
@@ -168,7 +173,7 @@ class Sharding private (
   ): URIO[Scope with Serialization with R, Messenger[Req]] =
     for {
       serialization <- ZIO.service[Serialization]
-      entityManager <- EntityManager.make(behavior, terminateMessage, self)
+      entityManager <- EntityManager.make(behavior, terminateMessage, self, config)
       binaryQueue   <- Queue.unbounded[(BinaryMessage, Promise[Throwable, Option[Array[Byte]]])].withFinalizer(_.shutdown)
       _             <- entityStates.update(_.updated(entityType.name, EntityState(binaryQueue, entityManager)))
       _             <- ZStream
@@ -194,7 +199,7 @@ class Sharding private (
     } yield new Messenger[Req] {
 
       def sendDiscard(entityId: String)(msg: Req): UIO[Unit] =
-        sendMessage(entityId, msg, None).timeout(10 seconds).forkDaemon.unit
+        sendMessage(entityId, msg, None).timeout(config.sendTimeout).forkDaemon.unit
 
       def send[Res](entityId: String)(msg: Replier[Res] => Req): Task[Res] =
         Random.nextUUID.flatMap { uuid =>
@@ -203,7 +208,7 @@ class Sharding private (
             case Some(value) => ZIO.succeed(value)
             case None        => ZIO.fail(new Exception(s"Send returned nothing, entityId=$entityId, body=$body"))
           }
-            .timeoutFail(SendTimeoutException(entityType, entityId, body))(10 seconds)
+            .timeoutFail(SendTimeoutException(entityType, entityId, body))(config.sendTimeout)
             .interruptible
         }
 
@@ -234,7 +239,12 @@ class Sharding private (
                                         ZIO.whenCase(_) { case PodUnavailable(pod) =>
                                           val notify = Clock.currentDateTime.flatMap(cdt =>
                                             lastUnhealthyNodeReported
-                                              .updateAndGet(old => if (old.plusSeconds(5) isBefore cdt) cdt else old)
+                                              .updateAndGet(old =>
+                                                if (
+                                                  old.plusNanos(config.unhealthyPodReportInterval.toNanos) isBefore cdt
+                                                ) cdt
+                                                else old
+                                              )
                                               .map(_ isEqual cdt)
                                           )
                                           ZIO.whenZIO(notify)(shardManager.notifyUnhealthyPod(pod).forkDaemon)
@@ -291,7 +301,7 @@ object Sharding {
         shuttingDown              <- Ref.make(false)
         sharding                   = new Sharding(
                                        PodAddress(config.selfHost, config.shardingPort),
-                                       config.numberOfShards,
+                                       config,
                                        shardsCache,
                                        entityStates,
                                        singletons,

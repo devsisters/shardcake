@@ -1,7 +1,7 @@
 package com.devsisters.shardcake.internal
 
 import com.devsisters.shardcake.errors.EntityNotManagedByThisPod
-import com.devsisters.shardcake.{ ShardId, Sharding }
+import com.devsisters.shardcake.{ Config, ShardId, Sharding }
 import zio._
 
 private[shardcake] trait EntityManager[-Req] {
@@ -19,7 +19,8 @@ private[shardcake] object EntityManager {
   def make[R, Req: Tag](
     behavior: (String, Queue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req],
-    sharding: Sharding
+    sharding: Sharding,
+    config: Config
   ): URIO[R, EntityManager[Req]] =
     for {
       entities <- Ref.Synchronized.make[Map[String, (Option[Queue[Req]], Fiber[Nothing, Unit])]](Map())
@@ -28,18 +29,20 @@ private[shardcake] object EntityManager {
       (entityId: String, queue: Queue[Req]) => behavior(entityId, queue).provideEnvironment(env),
       terminateMessage,
       entities,
-      sharding
+      sharding,
+      config
     )
 
   class EntityManagerLive[Req](
     behavior: (String, Queue[Req]) => Task[Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req],
     entities: Ref.Synchronized[Map[String, (Option[Queue[Req]], Fiber[Nothing, Unit])]],
-    sharding: Sharding
+    sharding: Sharding,
+    config: Config
   ) extends EntityManager[Req] {
     private def startExpirationFiber(entityId: String): UIO[Fiber[Nothing, Unit]] =
       (for {
-        _ <- Clock.sleep(2 minutes)
+        _ <- Clock.sleep(config.entityMaxIdleTime)
         _ <- terminateEntity(entityId).forkDaemon.unit // fork daemon otherwise it will interrupt itself
       } yield ()).forkDaemon
 
@@ -143,7 +146,7 @@ private[shardcake] object EntityManager {
                         )
                     }
         // wait until they are all terminated
-        _        <- ZIO.foreachDiscard(promises)(_.await).timeout(3 seconds)
+        _        <- ZIO.foreachDiscard(promises)(_.await).timeout(config.entityTerminationTimeout)
       } yield ()
   }
 }

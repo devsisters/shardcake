@@ -10,7 +10,7 @@ import io.grpc.{ ServerBuilder, Status, StatusException, StatusRuntimeException 
 import scalapb.zio_grpc.{ ServerLayer, ServiceList }
 import zio._
 
-trait GrpcShardingService extends ZShardingService[Sharding, Any] {
+abstract class GrpcShardingService(timeout: Duration) extends ZShardingService[Sharding, Any] {
   def assignShards(request: AssignShardsRequest): ZIO[Sharding, Status, AssignShardsResponse] =
     ZIO.serviceWithZIO[Sharding](_.assign(request.shards.toSet)).as(AssignShardsResponse())
 
@@ -29,7 +29,7 @@ trait GrpcShardingService extends ZShardingService[Sharding, Any] {
         case Some(res) => ByteString.copyFrom(res)
       }
       .mapBoth(mapErrorToStatusWithInternalDetails, SendResponse(_))
-      .timeoutFail(Status.ABORTED.withDescription("Timeout while handling sharding send grpc"))(10 seconds)
+      .timeoutFail(Status.ABORTED.withDescription("Timeout while handling sharding send grpc"))(timeout)
 
   def pingShards(request: PingShardsRequest): ZIO[Sharding, Status, PingShardsResponse] =
     ZIO.succeed(PingShardsResponse())
@@ -50,7 +50,7 @@ object GrpcShardingService {
   val live: ZLayer[Config with Sharding, Throwable, Unit] =
     ZLayer.service[Config].flatMap { config =>
       val builder  = ServerBuilder.forPort(config.get.shardingPort).addService(ProtoReflectionService.newInstance())
-      val services = ServiceList.add(new GrpcShardingService {})
+      val services = ServiceList.add(new GrpcShardingService(config.get.sendTimeout) {})
       ServerLayer.fromServiceList(builder, services).unit
     }
 }

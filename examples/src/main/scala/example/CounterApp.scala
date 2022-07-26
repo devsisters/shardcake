@@ -3,13 +3,13 @@ package example
 import com.devsisters.shardcake._
 import example.CounterActor.CounterMessage
 import example.CounterActor.CounterMessage.{ DecrementCounter, GetCounter, IncrementCounter }
-import sttp.client3.UriContext
 import zio._
 
 object CounterApp extends ZIOAppDefault {
 
-  private val config     = ZLayer.succeed(Config(300, "localhost", 8888, uri"http://localhost:8080/api/graphql", "1.0.0"))
-  private val grpcConfig = ZLayer.succeed(GrpcConfig(32 * 1024 * 1024))
+  private val config      = ZLayer.succeed(Config.default)
+  private val grpcConfig  = ZLayer.succeed(GrpcConfig.default)
+  private val redisConfig = ZLayer.succeed(RedisConfig.default)
 
   def run: Task[Unit] =
     ZIO.scoped {
@@ -28,6 +28,7 @@ object CounterApp extends ZIOAppDefault {
     }.provide(
       config,
       grpcConfig,
+      redisConfig,
       redis,
       KryoSerialization.live,
       StorageRedis.live,

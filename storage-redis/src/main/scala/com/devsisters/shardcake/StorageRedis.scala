@@ -10,46 +10,47 @@ import zio.{ Task, ZIO, ZLayer }
 
 object StorageRedis {
   type fs2Stream[A] = fs2.Stream[Task, A]
+  type Redis        = RedisCommands[Task, String, String] with PubSubCommands[fs2Stream, String, String]
 
   /**
    * A layer that returns a Storage implementation using Redis
    */
-  val live
-    : ZLayer[RedisCommands[Task, String, String] with PubSubCommands[fs2Stream, String, String], Nothing, Storage] =
+  val live: ZLayer[Redis with RedisConfig, Nothing, Storage] =
     ZLayer {
       for {
+        config       <- ZIO.service[RedisConfig]
         stringClient <- ZIO.service[RedisCommands[Task, String, String]]
         pubSubClient <- ZIO.service[PubSubCommands[fs2Stream, String, String]]
       } yield new Storage {
-        val assignmentsKey = "shard_assignments"
-        val podsKey        = "pods"
-
         def getAssignments: Task[Map[ShardId, Option[PodAddress]]] =
           stringClient
-            .hGetAll(assignmentsKey)
+            .hGetAll(config.assignmentsKey)
             .map(_.flatMap { case (k, v) =>
               val pod = if (v.isEmpty) None else PodAddress(v)
               k.toIntOption.map(_ -> pod)
             })
 
         def saveAssignments(assignments: Map[ShardId, Option[PodAddress]]): Task[Unit] =
-          stringClient.hSet(assignmentsKey, assignments.map { case (k, v) => k.toString -> v.fold("")(_.toString) }) *>
+          stringClient.hSet(
+            config.assignmentsKey,
+            assignments.map { case (k, v) => k.toString -> v.fold("")(_.toString) }
+          ) *>
             pubSubClient
-              .publish(RedisChannel(assignmentsKey))(fs2.Stream.eval[Task, String](ZIO.succeed("ping")))
+              .publish(RedisChannel(config.assignmentsKey))(fs2.Stream.eval[Task, String](ZIO.succeed("ping")))
               .toZStream(1)
               .runDrain
 
         def assignmentsStream: ZStream[Any, Throwable, Map[ShardId, Option[PodAddress]]] =
-          pubSubClient.subscribe(RedisChannel(assignmentsKey)).toZStream(1).mapZIO(_ => getAssignments)
+          pubSubClient.subscribe(RedisChannel(config.assignmentsKey)).toZStream(1).mapZIO(_ => getAssignments)
 
         def getPods: Task[Map[PodAddress, Pod]] =
           stringClient
-            .hGetAll(podsKey)
+            .hGetAll(config.podsKey)
             .map(_.toList.flatMap { case (k, v) => PodAddress(k).map(address => address -> Pod(address, v)) }.toMap)
 
         def savePods(pods: Map[PodAddress, Pod]): Task[Unit] =
-          stringClient.del(podsKey) *>
-            stringClient.hSet(podsKey, pods.map { case (k, v) => k.toString -> v.version }).unit
+          stringClient.del(config.podsKey) *>
+            stringClient.hSet(config.podsKey, pods.map { case (k, v) => k.toString -> v.version }).unit
       }
     }
 }
