@@ -21,7 +21,7 @@ private[shardcake] object GraphQLApi extends GenericSchema[ShardManager] {
   case class Subscriptions(events: ZStream[ShardManager, Nothing, ShardingEvent])
 
   val api: GraphQL[ShardManager] =
-    graphQL(
+    graphQL[ShardManager, Queries, Mutations, Subscriptions](
       RootResolver(
         Queries(ZIO.serviceWithZIO(_.getAssignments.map(_.map { case (k, v) => Assignment(k, v) }.toList))),
         Mutations(

@@ -21,8 +21,8 @@ object CounterApp extends ZIOAppDefault {
         _       <- counter.sendDiscard("c1")(IncrementCounter)
         _       <- counter.sendDiscard("c1")(IncrementCounter)
         _       <- counter.sendDiscard("c2")(IncrementCounter)
-        _       <- counter.send("c1")(GetCounter).debug
-        _       <- counter.send("c2")(GetCounter).debug
+        _       <- counter.send("c1")(GetCounter.apply).debug
+        _       <- counter.send("c2")(GetCounter.apply).debug
       } yield ()
     }.provide(
       config,
