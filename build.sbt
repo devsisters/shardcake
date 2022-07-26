@@ -11,6 +11,7 @@ val sttpVersion           = "3.7.0"
 val calibanVersion        = "2.0.0"
 val redis4catsVersion     = "1.2.0"
 val chillVersion          = "0.9.5"
+val testContainersVersion = "0.40.9"
 
 inThisBuild(
   List(
@@ -118,9 +119,12 @@ lazy val storageRedis = project
   .settings(
     libraryDependencies ++=
       Seq(
-        "dev.profunktor" %% "redis4cats-effects" % redis4catsVersion,
-        "dev.profunktor" %% "redis4cats-streams" % redis4catsVersion,
-        "dev.zio"        %% "zio-interop-cats"   % zioCatsInteropVersion
+        "dev.profunktor" %% "redis4cats-effects"        % redis4catsVersion,
+        "dev.profunktor" %% "redis4cats-streams"        % redis4catsVersion,
+        "dev.zio"        %% "zio-interop-cats"          % zioCatsInteropVersion,
+        "dev.zio"        %% "zio-test"                  % zioVersion            % Test,
+        "dev.zio"        %% "zio-test-sbt"              % zioVersion            % Test,
+        "com.dimafeng"   %% "testcontainers-scala-core" % testContainersVersion % Test
       )
   )
 
@@ -179,6 +183,7 @@ lazy val protobuf = Seq(
 lazy val commonSettings = Def.settings(
   resolvers ++= Resolver.sonatypeOssRepos("snapshots"),
   testFrameworks := Seq(new TestFramework("zio.test.sbt.ZTestFramework")),
+  Test / fork    := true,
   scalacOptions ++= Seq(
     "-deprecation",
     "-encoding",
