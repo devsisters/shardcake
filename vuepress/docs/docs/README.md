@@ -13,7 +13,7 @@ Let's consider the case where 2 users try to join a guild at the exact same time
 ![naive diagram](/shardcake/usecase1.png)
 
 If we implement this naively, 2 different nodes might receive our 2 requests to join the guild.
-They will both check the current size of the guild, which is 29 and accept the new guild member. Now our guild has 31 members :scream:.
+They will both check the current size of the guild at the same time, which will be 29 and they will both accept the new guild member. Now our guild has 31 members :scream:.
 
 There are 2 common approaches to deal with this issue:
 - **Global lock** approach: when checking the members of the guild, acquire a lock that is shared between the different game servers, and release it after saving the new member. 
