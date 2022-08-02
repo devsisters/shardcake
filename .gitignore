@@ -21,3 +21,4 @@ vuepress/package-lock.json
 package-lock.json
 node_modules/
 .DS_Store
+vuepress/docs/.vuepress/dist
