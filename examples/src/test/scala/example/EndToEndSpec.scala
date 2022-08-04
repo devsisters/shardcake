@@ -1,22 +1,23 @@
 package example
 
-import CounterActor.CounterMessage._
-import CounterActor._
 import com.devsisters.shardcake.StorageRedis.fs2Stream
 import com.devsisters.shardcake._
 import com.devsisters.shardcake.interfaces.PodsHealth
 import com.dimafeng.testcontainers.GenericContainer
-import dev.profunktor.redis4cats.{ Redis, RedisCommands }
 import dev.profunktor.redis4cats.connection.RedisClient
 import dev.profunktor.redis4cats.data.RedisCodec
 import dev.profunktor.redis4cats.effect.Log
 import dev.profunktor.redis4cats.pubsub.{ PubSub, PubSubCommands }
-import sttp.client3.UriContext
+import dev.profunktor.redis4cats.{ Redis, RedisCommands }
+import example.simple.GuildBehavior
+import example.simple.GuildBehavior.Guild
+import example.simple.GuildBehavior.GuildMessage.Join
 import zio.Clock.ClockLive
-import zio.interop.catz._
-import zio.test.TestAspect.{ sequential, withLiveClock }
-import zio.test._
 import zio._
+import zio.interop.catz._
+import zio.test.Assertion._
+import zio.test.TestAspect.sequential
+import zio.test._
 
 object EndToEndSpec extends ZIOSpecDefault {
 
@@ -66,16 +67,14 @@ object EndToEndSpec extends ZIOSpecDefault {
         ZIO.scoped {
           for {
             _       <- Sharding.registerScoped
-            counter <- Sharding.registerEntity(Counter, behavior)
-            _       <- counter.sendDiscard("c1")(IncrementCounter)
-            _       <- counter.sendDiscard("c1")(DecrementCounter)
-            _       <- counter.sendDiscard("c1")(IncrementCounter)
-            _       <- counter.sendDiscard("c1")(IncrementCounter)
-            _       <- counter.sendDiscard("c2")(IncrementCounter)
-            _       <- Clock.sleep(1 second)
-            c1      <- counter.send("c1")(GetCounter.apply)
-            c2      <- counter.send("c2")(GetCounter.apply)
-          } yield assertTrue(c1 == 2) && assertTrue(c2 == 1)
+            guild   <- Sharding.registerEntity(Guild, GuildBehavior.behavior)
+            _       <- guild.send("guild1")(Join("user1", _))
+            _       <- guild.send("guild1")(Join("user2", _))
+            _       <- guild.send("guild1")(Join("user3", _))
+            _       <- guild.send("guild1")(Join("user4", _))
+            members <- guild.send("guild1")(Join("user5", _))
+            failure <- guild.send("guild1")(Join("user6", _))
+          } yield assert(members)(isSuccess(hasSize(equalTo(5)))) && assert(failure)(isFailure(anything))
         }
       }
     ).provideShared(
@@ -94,5 +93,5 @@ object EndToEndSpec extends ZIOSpecDefault {
       ZLayer.succeed(GrpcConfig.default),
       ZLayer.succeed(ManagerConfig.default),
       ZLayer.succeed(RedisConfig.default)
-    ) @@ sequential @@ withLiveClock
+    ) @@ sequential
 }

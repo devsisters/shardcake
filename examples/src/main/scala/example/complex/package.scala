@@ -1,13 +1,15 @@
+package example
+
 import com.devsisters.shardcake.StorageRedis.fs2Stream
 import dev.profunktor.redis4cats.connection.RedisClient
 import dev.profunktor.redis4cats.data.RedisCodec
 import dev.profunktor.redis4cats.effect.Log
-import dev.profunktor.redis4cats.pubsub.{ PubSub, PubSubCommands }
-import dev.profunktor.redis4cats.{ Redis, RedisCommands }
+import dev.profunktor.redis4cats.pubsub.{PubSub, PubSubCommands}
+import dev.profunktor.redis4cats.{Redis, RedisCommands}
 import zio.interop.catz._
-import zio.{ Task, ZEnvironment, ZIO, ZLayer }
+import zio.{Task, ZEnvironment, ZIO, ZLayer}
 
-package object example {
+package object complex {
   val redis
     : ZLayer[Any, Throwable, RedisCommands[Task, String, String] with PubSubCommands[fs2Stream, String, String]] =
     ZLayer.scopedEnvironment {
