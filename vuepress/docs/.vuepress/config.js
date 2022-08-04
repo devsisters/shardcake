@@ -41,6 +41,7 @@ module.exports = {
                         children: [
                             '',
                             'architecture',
+                            'config',
                             'storage',
                             'messaging-protocol',
                             'serialization',
