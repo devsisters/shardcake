@@ -42,10 +42,7 @@ module.exports = {
                             '',
                             'architecture',
                             'config',
-                            'storage',
-                            'messaging-protocol',
-                            'serialization',
-                            'health',
+                            'customization',
                             'examples'
                         ]
                     }]
