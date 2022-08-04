@@ -19,6 +19,8 @@ import zio.test.Assertion._
 import zio.test.TestAspect.sequential
 import zio.test._
 
+import scala.util.Try
+
 object EndToEndSpec extends ZIOSpecDefault {
 
   val shardManagerServer: ZLayer[ShardManager with ManagerConfig, Throwable, Unit] =
@@ -72,9 +74,9 @@ object EndToEndSpec extends ZIOSpecDefault {
             _       <- guild.send("guild1")(Join("user2", _))
             _       <- guild.send("guild1")(Join("user3", _))
             _       <- guild.send("guild1")(Join("user4", _))
-            members <- guild.send("guild1")(Join("user5", _))
-            failure <- guild.send("guild1")(Join("user6", _))
-          } yield assert(members)(isSuccess(hasSize(equalTo(5)))) && assert(failure)(isFailure(anything))
+            members <- guild.send[Try[Set[String]]]("guild1")(Join("user5", _))
+            failure <- guild.send[Try[Set[String]]]("guild1")(Join("user6", _))
+          } yield assert(members)(isSuccess(hasSize(equalTo(5)))) && assertTrue(failure.isFailure)
         }
       }
     ).provideShared(
