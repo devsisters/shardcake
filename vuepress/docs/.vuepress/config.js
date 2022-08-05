@@ -42,8 +42,7 @@ module.exports = {
                             '',
                             'architecture',
                             'config',
-                            'customization',
-                            'examples'
+                            'customization'
                         ]
                     }]
                 }

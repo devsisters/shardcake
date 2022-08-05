@@ -217,5 +217,9 @@ The only changes we would need to make would be:
 - to use an actual `Storage` implementation for sharding (e.g. Redis)
 - to save our guild state somewhere instead of in memory, so that we don't lose this state if the guild entity is moved from one pod to another
 
+The running code for this example [can be found here](https://github.com/devsisters/shardcake/tree/master/examples/src/main/scala/example/simple), 
+as well as [a more complex example](https://github.com/devsisters/shardcake/tree/master/examples/src/main/scala/example/complex) using Redis to persist data and where you can run multiple pods.
+
 To understand how Sharding works under the hood, have a look at the [Architecture](architecture.md) section.
-The [Configuration](config.md) section explains some of the key options to configure the sharding system. Finally, we also provide additional [Examples](examples.md).
+The [Configuration](config.md) section explains how to configure the sharding system.
+Finally, the [Customization](customization.md) section describes how you can use your own storage, serialization or messaging protocol, as well as the options provided by Shardcake.
