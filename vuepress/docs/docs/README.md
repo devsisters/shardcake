@@ -235,5 +235,6 @@ This is not the case with Shardcake since the Shard Manager is an external compo
 - Akka is way more than a sharding library, this is basically an entire framework that has a lot of features.
 Shardcake is much **simpler and modular**. It lets you customize multiple things, including the messaging protocol between pods.
 
-- Akka provides **commercial support**, while Shardcake is backed by **Devsisters** and the **ZIO community**.
+- Akka is backed by [Lightbend](https://www.lightbend.com), who provides **commercial support**,
+while Shardcake is backed by [Devsisters](https://www.devsisters.com) and the **ZIO community**.
 :::
