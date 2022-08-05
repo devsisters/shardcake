@@ -66,7 +66,7 @@ There are 4 pluggable parts that can be implemented with the technology of your 
 - The `Serialization` defines how to encode and decode messages. Shardcake provides an implementation using **Kryo**.
 - The `PodsHealth` trait defines how to check if a pod is healthy or not. Shardcake provides an implementation using the **k8s API**.
 
-![single writer diagram](/shardcake/arch.png)
+![architecture diagram](/shardcake/arch.png)
 
 ## An example
 
