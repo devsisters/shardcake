@@ -223,3 +223,17 @@ as well as [a more complex example](https://github.com/devsisters/shardcake/tree
 To understand how Sharding works under the hood, have a look at the [Architecture](architecture.md) section.
 The [Configuration](config.md) section explains how to configure the sharding system.
 Finally, the [Customization](customization.md) section describes how you can use your own storage, serialization or messaging protocol, as well as the options provided by Shardcake.
+
+::: tip Differences with Akka Cluster Sharding ?
+[Akka Cluster Sharding](https://doc.akka.io/docs/akka/current/typed/cluster-sharding.html) is the main alternative for sharding in Scala.
+Here is how Shardcake differs from Akka:
+- Shardcake is a **purely functional library** based on `ZIO`, while Akka is a library leaning towards the "better Java" style of Scala and is based on `Future`.
+
+- With Akka, all application servers **must be part of a cluster**. This is particularly tricky to configure and sensitive to all kinds of failures.
+This is not the case with Shardcake since the Shard Manager is an external component that relies on systems like Kubernetes to monitor pod health.
+
+- Akka is way more than a sharding library, this is basically an entire framework that has a lot of features.
+Shardcake is much **simpler and modular**. It lets you customize multiple things, including the messaging protocol between pods.
+
+- Akka provides **commercial support**, while Shardcake is backed by **Devsisters** and the **ZIO community**.
+:::
