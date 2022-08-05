@@ -21,7 +21,7 @@ package object complex {
       }
 
       (for {
-        client   <- RedisClient[Task].from("redis://localhost")
+        client   <- RedisClient[Task].from("redis://foobared@localhost")
         commands <- Redis[Task].fromClient(client, RedisCodec.Utf8)
         pubSub   <- PubSub.mkPubSubConnection[Task, String, String](client, RedisCodec.Utf8)
       } yield ZEnvironment(commands, pubSub)).toScopedZIO

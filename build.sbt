@@ -2,7 +2,7 @@ val scala213 = "2.13.8"
 val scala3   = "3.1.3"
 val allScala = Seq(scala213, scala3)
 
-val zioVersion            = "2.0.0"
+val zioVersion            = "2.0.0+152-be7002a2-SNAPSHOT"
 val zioGrpcVersion        = "0.0.0+1-78c41c4f-SNAPSHOT"
 val zioK8sVersion         = "2.0.0"
 val zioCacheVersion       = "0.2.0"
@@ -162,6 +162,13 @@ lazy val examples = project
   .settings(name := "examples")
   .settings(publish / skip := true)
   .settings(commonSettings)
+  .settings(
+    libraryDependencies ++=
+      Seq(
+        "dev.zio" %% "zio"         % zioVersion,
+        "dev.zio" %% "zio-streams" % zioVersion
+      )
+  )
   .dependsOn(manager, storageRedis, grpcProtocol, serializationKryo)
 
 lazy val protobuf = Seq(
