@@ -12,6 +12,7 @@ import dev.profunktor.redis4cats.{ Redis, RedisCommands }
 import example.simple.GuildBehavior
 import example.simple.GuildBehavior.Guild
 import example.simple.GuildBehavior.GuildMessage.Join
+import sttp.client3.UriContext
 import zio.Clock.ClockLive
 import zio._
 import zio.interop.catz._
@@ -63,6 +64,11 @@ object EndToEndSpec extends ZIOSpecDefault {
         )
     }
 
+  private val config        = ZLayer.succeed(Config.default.copy(shardManagerUri = uri"http://localhost:8087/api/graphql"))
+  private val grpcConfig    = ZLayer.succeed(GrpcConfig.default)
+  private val managerConfig = ZLayer.succeed(ManagerConfig.default.copy(apiPort = 8087))
+  private val redisConfig   = ZLayer.succeed(RedisConfig.default)
+
   def spec: Spec[TestEnvironment with Scope, Any] =
     suite("EndToEndSpec")(
       test("Send message to entities") {
@@ -91,9 +97,9 @@ object EndToEndSpec extends ZIOSpecDefault {
       shardManagerServer,
       container,
       redis,
-      ZLayer.succeed(Config.default),
-      ZLayer.succeed(GrpcConfig.default),
-      ZLayer.succeed(ManagerConfig.default),
-      ZLayer.succeed(RedisConfig.default)
+      config,
+      grpcConfig,
+      managerConfig,
+      redisConfig
     ) @@ sequential
 }
