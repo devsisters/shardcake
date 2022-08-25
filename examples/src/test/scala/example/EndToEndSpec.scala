@@ -1,6 +1,6 @@
 package example
 
-import com.devsisters.shardcake.StorageRedis.fs2Stream
+import com.devsisters.shardcake.StorageRedis.{ fs2Stream, Redis }
 import com.devsisters.shardcake._
 import com.devsisters.shardcake.interfaces.PodsHealth
 import com.dimafeng.testcontainers.GenericContainer
@@ -38,11 +38,7 @@ object EndToEndSpec extends ZIOSpecDefault {
       }(container => ZIO.attemptBlocking(container.stop()).orDie)
     }
 
-  val redis: ZLayer[GenericContainer, Throwable, RedisCommands[Task, String, String] with PubSubCommands[
-    fs2Stream,
-    String,
-    String
-  ]] =
+  val redis: ZLayer[GenericContainer, Throwable, Redis] =
     ZLayer.scopedEnvironment {
       implicit val runtime: zio.Runtime[Any] = zio.Runtime.default
       implicit val logger: Log[Task]         = new Log[Task] {

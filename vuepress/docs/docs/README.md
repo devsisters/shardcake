@@ -104,8 +104,8 @@ We now need to define our **entity behavior**: what kind of messages can our ent
 
 First, we need the following dependencies:
 ```
-libraryDependencies += "com.devsisters" %% "shardcake-entities"       % "0.0.1"
-libraryDependencies += "com.devsisters" %% "shardcake-protocol-grpc"  % "0.0.1"
+libraryDependencies += "com.devsisters" %% "shardcake-entities"      % "0.0.1"
+libraryDependencies += "com.devsisters" %% "shardcake-protocol-grpc" % "0.0.1"
 ```
 
 Let's start with defining the messages our entities can receive. We will have 2: one for joining a guild and one for leaving.
