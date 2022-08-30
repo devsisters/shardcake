@@ -43,10 +43,7 @@ class Sharding private (
       shardManager.unregister(address)
 
   private def isSingletonNode: UIO[Boolean] =
-    // In theory, it would be better to start a single instance in kubernetes with a new role that is just for our singletons
-    // and use shard manager to communicate with other nodes.
-    // But since our singletons are so tiny, that is a little overkill,
-    // so we just start them on the pod hosting shard 1.
+    // Start singletons on the pod hosting shard 1.
     shardAssignments.get.map(_.get(1).contains(address))
 
   private def startSingletonsIfNeeded: UIO[Unit] =
