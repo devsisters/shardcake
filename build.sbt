@@ -47,8 +47,6 @@ lazy val root = project
   .in(file("."))
   .settings(publish / skip := true)
   .settings(crossScalaVersions := Nil)
-  .settings(sonatypeRepository := "https://s01.oss.sonatype.org/service/local")
-  .settings(sonatypeCredentialHost := "s01.oss.sonatype.org")
   .aggregate(
     core,
     manager,
