@@ -33,8 +33,7 @@ inThisBuild(
         "ghostdogpr@gmail.com",
         url("https://github.com/ghostdogpr")
       )
-    ),
-    sonatypeRepository := "https://s01.oss.sonatype.org/service/local"
+    )
   )
 )
 
@@ -46,9 +45,7 @@ lazy val root = project
   .in(file("."))
   .settings(publish / skip := true)
   .settings(crossScalaVersions := Nil)
-  .settings(
-    sonatypeCredentialHost := "s01.oss.sonatype.org"
-  )
+  .settings(sonatypeCredentialHost := "s01.oss.sonatype.org")
   .aggregate(
     core,
     manager,
@@ -188,14 +185,15 @@ lazy val protobuf = Seq(
 
 lazy val commonSettings = Def.settings(
   resolvers ++= Resolver.sonatypeOssRepos("snapshots"),
-  testFrameworks := Seq(new TestFramework("zio.test.sbt.ZTestFramework")),
+  sonatypeRepository := "https://s01.oss.sonatype.org/service/local",
+  testFrameworks     := Seq(new TestFramework("zio.test.sbt.ZTestFramework")),
   libraryDependencies ++=
     Seq(
       "dev.zio"      %% "zio-test"                  % zioVersion            % Test,
       "dev.zio"      %% "zio-test-sbt"              % zioVersion            % Test,
       "com.dimafeng" %% "testcontainers-scala-core" % testContainersVersion % Test
     ),
-  Test / fork    := true,
+  Test / fork        := true,
   scalacOptions ++= Seq(
     "-deprecation",
     "-encoding",
