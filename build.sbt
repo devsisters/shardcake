@@ -33,7 +33,8 @@ inThisBuild(
         "ghostdogpr@gmail.com",
         url("https://github.com/ghostdogpr")
       )
-    )
+    ),
+    sonatypeRepository := "https://s01.oss.sonatype.org/service/local"
   )
 )
 
@@ -46,8 +47,7 @@ lazy val root = project
   .settings(publish / skip := true)
   .settings(crossScalaVersions := Nil)
   .settings(
-    sonatypeCredentialHost := "s01.oss.sonatype.org",
-    sonatypeRepository     := "https://s01.oss.sonatype.org/service/local"
+    sonatypeCredentialHost := "s01.oss.sonatype.org"
   )
   .aggregate(
     core,
