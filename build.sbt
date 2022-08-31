@@ -15,25 +15,27 @@ val testContainersVersion = "0.40.9"
 
 inThisBuild(
   List(
-    scalaVersion       := scala213,
-    crossScalaVersions := allScala,
-    organization       := "com.devsisters",
-    homepage           := Some(url("https://devsisters.github.io/shardcake/")),
-    licenses           := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
-    scmInfo            := Some(
+    scalaVersion           := scala213,
+    crossScalaVersions     := allScala,
+    organization           := "com.devsisters",
+    homepage               := Some(url("https://devsisters.github.io/shardcake/")),
+    licenses               := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
+    scmInfo                := Some(
       ScmInfo(
         url("https://github.com/devsisters/shardcake"),
         "scm:git:git@github.com:devsisters/shardcake.git"
       )
     ),
-    developers         := List(
+    developers             := List(
       Developer(
         "ghostdogpr",
         "Pierre Ricadat",
         "ghostdogpr@gmail.com",
         url("https://github.com/ghostdogpr")
       )
-    )
+    ),
+    sonatypeRepository     := "https://s01.oss.sonatype.org/service/local",
+    sonatypeCredentialHost := "s01.oss.sonatype.org"
   )
 )
 
@@ -45,6 +47,7 @@ lazy val root = project
   .in(file("."))
   .settings(publish / skip := true)
   .settings(crossScalaVersions := Nil)
+  .settings(sonatypeRepository := "https://s01.oss.sonatype.org/service/local")
   .settings(sonatypeCredentialHost := "s01.oss.sonatype.org")
   .aggregate(
     core,
@@ -185,15 +188,14 @@ lazy val protobuf = Seq(
 
 lazy val commonSettings = Def.settings(
   resolvers ++= Resolver.sonatypeOssRepos("snapshots"),
-  sonatypeRepository := "https://s01.oss.sonatype.org/service/local",
-  testFrameworks     := Seq(new TestFramework("zio.test.sbt.ZTestFramework")),
+  testFrameworks := Seq(new TestFramework("zio.test.sbt.ZTestFramework")),
   libraryDependencies ++=
     Seq(
       "dev.zio"      %% "zio-test"                  % zioVersion            % Test,
       "dev.zio"      %% "zio-test-sbt"              % zioVersion            % Test,
       "com.dimafeng" %% "testcontainers-scala-core" % testContainersVersion % Test
     ),
-  Test / fork        := true,
+  Test / fork    := true,
   scalacOptions ++= Seq(
     "-deprecation",
     "-encoding",
