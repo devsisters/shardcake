@@ -15,26 +15,25 @@ val testContainersVersion = "0.40.9"
 
 inThisBuild(
   List(
-    scalaVersion           := scala213,
-    crossScalaVersions     := allScala,
-    organization           := "com.devsisters",
-    homepage               := Some(url("https://devsisters.github.io/shardcake/")),
-    licenses               := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
-    scmInfo                := Some(
+    scalaVersion       := scala213,
+    crossScalaVersions := allScala,
+    organization       := "com.devsisters",
+    homepage           := Some(url("https://devsisters.github.io/shardcake/")),
+    licenses           := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
+    scmInfo            := Some(
       ScmInfo(
         url("https://github.com/devsisters/shardcake"),
         "scm:git:git@github.com:devsisters/shardcake.git"
       )
     ),
-    developers             := List(
+    developers         := List(
       Developer(
         "ghostdogpr",
         "Pierre Ricadat",
         "ghostdogpr@gmail.com",
         url("https://github.com/ghostdogpr")
       )
-    ),
-    sonatypeCredentialHost := "s01.oss.sonatype.org"
+    )
   )
 )
 
@@ -46,7 +45,10 @@ lazy val root = project
   .in(file("."))
   .settings(publish / skip := true)
   .settings(crossScalaVersions := Nil)
-  .settings(sonatypeRepository := "https://s01.oss.sonatype.org/service/local")
+  .settings(
+    sonatypeCredentialHost := "s01.oss.sonatype.org",
+    sonatypeRepository     := "https://s01.oss.sonatype.org/service/local"
+  )
   .aggregate(
     core,
     manager,
