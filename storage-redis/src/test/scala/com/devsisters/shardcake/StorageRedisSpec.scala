@@ -77,7 +77,7 @@ object StorageRedisSpec extends ZIOSpecDefault {
           actual <- p.await
         } yield assertTrue(expected == actual)
       }
-    ).provideCustomLayerShared(
+    ).provideLayerShared(
       container >>> redis ++ ZLayer.succeed(RedisConfig.default) >>> StorageRedis.live
     ) @@ sequential
 }
