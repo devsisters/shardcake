@@ -11,6 +11,7 @@ import zio._
  * @param pingTimeout time to wait for a pod to respond to a ping request
  * @param persistRetryInterval retry interval for persistence of pods and shard assignments
  * @param persistRetryCount max retry count for persistence of pods and shard assignments
+ * @param rebalanceRate max ratio of shards to rebalance at once
  */
 case class ManagerConfig(
   numberOfShards: Int,
@@ -19,7 +20,8 @@ case class ManagerConfig(
   rebalanceRetryInterval: Duration,
   pingTimeout: Duration,
   persistRetryInterval: Duration,
-  persistRetryCount: Int
+  persistRetryCount: Int,
+  rebalanceRate: Double
 )
 
 object ManagerConfig {
@@ -31,6 +33,7 @@ object ManagerConfig {
       rebalanceRetryInterval = 10 seconds,
       pingTimeout = 3 seconds,
       persistRetryInterval = 3 seconds,
-      persistRetryCount = 100
+      persistRetryCount = 100,
+      rebalanceRate = 2 / 100d
     )
 }

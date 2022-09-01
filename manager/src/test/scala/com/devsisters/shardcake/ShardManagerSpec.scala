@@ -23,7 +23,7 @@ object ShardManagerSpec extends ZIOSpecDefault {
               pods = Map(pod1.pod.address -> pod1, pod2.pod.address -> pod2),
               shards = Map(1 -> Some(pod1.pod.address), 2 -> Some(pod1.pod.address))
             )
-          val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state)
+          val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state, 1d)
           assertTrue(assignments.contains(pod2.pod.address)) &&
           assertTrue(assignments.size === 1) &&
           assertTrue(unassignments.contains(pod1.pod.address)) &&
@@ -38,7 +38,7 @@ object ShardManagerSpec extends ZIOSpecDefault {
               ), // older version
               shards = Map(1 -> Some(pod1.pod.address), 2 -> Some(pod1.pod.address))
             )
-          val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state)
+          val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state, 1d)
           assertTrue(assignments.isEmpty) && assertTrue(unassignments.isEmpty)
         },
         test("Don't rebalance when already well balanced") {
@@ -47,7 +47,7 @@ object ShardManagerSpec extends ZIOSpecDefault {
               pods = Map(pod1.pod.address -> pod1, pod2.pod.address -> pod2),
               shards = Map(1 -> Some(pod1.pod.address), 2 -> Some(pod2.pod.address))
             )
-          val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state)
+          val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state, 1d)
           assertTrue(assignments.isEmpty) && assertTrue(unassignments.isEmpty)
         },
         test("Don't rebalance when only 1 shard difference") {
@@ -56,7 +56,7 @@ object ShardManagerSpec extends ZIOSpecDefault {
               pods = Map(pod1.pod.address -> pod1, pod2.pod.address -> pod2),
               shards = Map(1 -> Some(pod1.pod.address), 2 -> Some(pod1.pod.address), 3 -> Some(pod2.pod.address))
             )
-          val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state)
+          val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state, 1d)
           assertTrue(assignments.isEmpty) && assertTrue(unassignments.isEmpty)
         },
         test("Rebalance when 2 shard difference") {
@@ -70,7 +70,7 @@ object ShardManagerSpec extends ZIOSpecDefault {
                 4 -> Some(pod2.pod.address)
               )
             )
-          val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state)
+          val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state, 1d)
           assertTrue(assignments.contains(pod2.pod.address)) &&
           assertTrue(assignments.size === 1) &&
           assertTrue(unassignments.contains(pod1.pod.address)) &&
@@ -82,7 +82,7 @@ object ShardManagerSpec extends ZIOSpecDefault {
               pods = Map(pod1.pod.address -> pod1, pod2.pod.address -> pod2, pod3.pod.address -> pod3),
               shards = Map(1 -> Some(pod1.pod.address), 2 -> Some(pod1.pod.address), 3 -> Some(pod2.pod.address))
             )
-          val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state)
+          val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state, 1d)
           assertTrue(assignments.contains(pod3.pod.address)) &&
           assertTrue(assignments.size === 1) &&
           assertTrue(unassignments.contains(pod1.pod.address)) &&
@@ -94,7 +94,7 @@ object ShardManagerSpec extends ZIOSpecDefault {
               pods = Map(),
               shards = Map(1 -> Some(pod1.pod.address))
             )
-          val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state)
+          val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state, 1d)
           assertTrue(assignments.isEmpty) && assertTrue(unassignments.isEmpty)
         },
         test("Balance well when 30 nodes are starting one by one") {
@@ -110,7 +110,7 @@ object ShardManagerSpec extends ZIOSpecDefault {
               val s1                           = state.copy(pods =
                 state.pods.updated(podAddress, PodWithMetadata(Pod(podAddress, "v1"), OffsetDateTime.now()))
               )
-              val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(s1)
+              val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(s1, 1d)
               val s2                           = unassignments.foldLeft(s1) { case (state, (_, shards)) =>
                 shards.foldLeft(state) { case (state, shard) => state.copy(shards = state.shards.updated(shard, None)) }
               }

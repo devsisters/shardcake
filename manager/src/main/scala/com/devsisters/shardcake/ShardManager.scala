@@ -80,7 +80,7 @@ class ShardManager(
         // find which shards to assign and unassign
         (assignments, unassignments)                   = if (rebalanceImmediately || state.unassignedShards.nonEmpty)
                                                            decideAssignmentsForUnassignedShards(state)
-                                                         else decideAssignmentsForUnbalancedShards(state)
+                                                         else decideAssignmentsForUnbalancedShards(state, config.rebalanceRate)
         areChanges                                     = assignments.nonEmpty || unassignments.nonEmpty
         _                                             <- ZIO.logDebug(s"Rebalancing (rebalanceImmediately=$rebalanceImmediately)").when(areChanges)
         // ping pods first to make sure they are ready and remove those who aren't
@@ -247,10 +247,11 @@ object ShardManager {
   def decideAssignmentsForUnassignedShards(
     state: ShardManagerState
   ): (Map[PodAddress, Set[ShardId]], Map[PodAddress, Set[ShardId]]) =
-    pickNewPods(state.unassignedShards.toList, state, rebalanceImmediately = true)
+    pickNewPods(state.unassignedShards.toList, state, rebalanceImmediately = true, 1.0)
 
   def decideAssignmentsForUnbalancedShards(
-    state: ShardManagerState
+    state: ShardManagerState,
+    rebalanceRate: Double
   ): (Map[PodAddress, Set[ShardId]], Map[PodAddress, Set[ShardId]]) = {
     val extraShardsToAllocate   =
       if (state.allPodsHaveMaxVersion) { // don't do regular rebalance in the middle of a rolling update
@@ -269,13 +270,14 @@ object ShardManager {
         )
       }
     }
-    pickNewPods(sortedShardsToRebalance, state, rebalanceImmediately = false)
+    pickNewPods(sortedShardsToRebalance, state, rebalanceImmediately = false, rebalanceRate)
   }
 
   private def pickNewPods(
     shardsToRebalance: List[ShardId],
     state: ShardManagerState,
-    rebalanceImmediately: Boolean
+    rebalanceImmediately: Boolean,
+    rebalanceRate: Double
   ): (Map[PodAddress, Set[ShardId]], Map[PodAddress, Set[ShardId]]) = {
     val (_, assignments)    = shardsToRebalance.foldLeft((state.shardsPerPod, List.empty[(ShardId, PodAddress)])) {
       case ((shardsPerPod, assignments), shard) =>
@@ -288,7 +290,7 @@ object ShardManager {
           }
           // don't assign too many shards to the same pods, unless we need rebalance immediately
           .filter { case (pod, _) =>
-            rebalanceImmediately || assignments.count { case (_, p) => p == pod } < state.shards.size * 2 / 100d
+            rebalanceImmediately || assignments.count { case (_, p) => p == pod } < state.shards.size * rebalanceRate
           }
           // don't assign to a pod that was unassigned in the same rebalance
           .filterNot { case (pod, _) => unassignedPods.contains(pod) }

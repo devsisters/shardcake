@@ -39,3 +39,11 @@ Here's the list of thing you can configure on the Shard Manager side:
 - `pingTimeout`: time to wait for a pod to respond to a ping request
 - `persistRetryInterval`: retry interval for persistence of pods and shard assignments
 - `persistRetryCount`: max retry count for persistence of pods and shard assignments
+- `rebalanceRate`: max ratio of shards to rebalance in a single iteration
+::: tip Rebalance Rate
+The rebalance rate is there to prevent too many shards being assigned immediately to new pods.
+Instead of reaching a perfect spread right away, we can use several iterations to make sure new pods are able to handle the new shards. 
+This is particularly useful if starting entities has a performance cost (e.g. loading state) and we don't want to start too many at once.
+
+When a pod is leaving, its shards need to be immediately rebalanced so the ratio is not used in that case.
+:::
