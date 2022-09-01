@@ -59,7 +59,7 @@ lazy val root = project
 
 lazy val core = project
   .in(file("core"))
-  .settings(name := "shardcake-core")
+  .settings(name := "shardcake-core-zio1")
   .settings(commonSettings)
   .settings(
     libraryDependencies ++=
@@ -71,7 +71,7 @@ lazy val core = project
 
 lazy val manager = project
   .in(file("manager"))
-  .settings(name := "shardcake-manager")
+  .settings(name := "shardcake-manager-zio1")
   .settings(commonSettings)
   .dependsOn(core)
   .settings(
@@ -84,7 +84,7 @@ lazy val manager = project
 
 lazy val entities = project
   .in(file("entities"))
-  .settings(name := "shardcake-entities")
+  .settings(name := "shardcake-entities-zio1")
   .settings(commonSettings)
   .dependsOn(core)
   .settings(
@@ -97,7 +97,7 @@ lazy val entities = project
 
 lazy val healthK8s = project
   .in(file("health-k8s"))
-  .settings(name := "shardcake-health-k8s")
+  .settings(name := "shardcake-health-k8s-zio1")
   .settings(commonSettings)
   .dependsOn(core)
   .settings(
@@ -112,7 +112,7 @@ lazy val healthK8s = project
 
 lazy val storageRedis = project
   .in(file("storage-redis"))
-  .settings(name := "shardcake-storage-redis")
+  .settings(name := "shardcake-storage-redis-zio1")
   .settings(commonSettings)
   .dependsOn(core)
   .settings(
@@ -126,7 +126,7 @@ lazy val storageRedis = project
 
 lazy val serializationKryo = project
   .in(file("serialization-kryo"))
-  .settings(name := "shardcake-serialization-kryo")
+  .settings(name := "shardcake-serialization-kryo-zio1")
   .settings(commonSettings)
   .dependsOn(core)
   .settings(
@@ -138,7 +138,7 @@ lazy val serializationKryo = project
 
 lazy val grpcProtocol = project
   .in(file("protocol-grpc"))
-  .settings(name := "shardcake-protocol-grpc")
+  .settings(name := "shardcake-protocol-grpc-zio1")
   .settings(commonSettings)
   .settings(protobuf: _*)
   .settings(
@@ -160,7 +160,7 @@ lazy val grpcProtocol = project
 
 lazy val examples = project
   .in(file("examples"))
-  .settings(name := "examples")
+  .settings(name := "examples-zio1")
   .settings(publish / skip := true)
   .settings(commonSettings)
   .settings(
