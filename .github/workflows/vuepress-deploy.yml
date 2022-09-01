@@ -2,7 +2,7 @@ name: Build and Deploy Docs
 
 on:
   push:
-    branches: ['master']
+    branches: ['series/2.x']
 
 jobs:
   build-and-deploy:
