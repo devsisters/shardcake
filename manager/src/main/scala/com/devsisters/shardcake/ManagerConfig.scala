@@ -1,6 +1,6 @@
 package com.devsisters.shardcake
 
-import zio._
+import zio.duration._
 
 /**
  * Shard Manager configuration

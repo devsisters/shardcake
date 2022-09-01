@@ -2,7 +2,7 @@ package com.devsisters.shardcake
 
 import sttp.client3.UriContext
 import sttp.model.Uri
-import zio._
+import zio.duration._
 
 /**
  * Sharding configuration

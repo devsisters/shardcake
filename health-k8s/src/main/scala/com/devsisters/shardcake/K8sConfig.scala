@@ -1,7 +1,7 @@
 package com.devsisters.shardcake
 
 import com.coralogix.zio.k8s.client.model.K8sNamespace
-import zio._
+import zio.duration._
 
 /**
  * Configuration for K8sPodsHealth

@@ -2,7 +2,7 @@ package com.devsisters.shardcake.interfaces
 
 import com.devsisters.shardcake.interfaces.Pods.BinaryMessage
 import com.devsisters.shardcake.{ PodAddress, ShardId }
-import zio.{ Task, ULayer, ZIO, ZLayer }
+import zio.{ Has, Task, ULayer, ZIO, ZLayer }
 
 /**
  * An interface to communicate with remote pods.
@@ -38,7 +38,7 @@ object Pods {
    * A layer that creates a service that does nothing when called.
    * Useful for testing ShardManager or when using Sharding.local.
    */
-  val noop: ULayer[Pods] =
+  val noop: ULayer[Has[Pods]] =
     ZLayer.succeed(new Pods {
       def assignShards(pod: PodAddress, shards: Set[ShardId]): Task[Unit]                 = ZIO.unit
       def unassignShards(pod: PodAddress, shards: Set[ShardId]): Task[Unit]               = ZIO.unit

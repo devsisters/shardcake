@@ -1,7 +1,7 @@
 package com.devsisters.shardcake.interfaces
 
 import com.devsisters.shardcake.PodAddress
-import zio.{ UIO, ULayer, ZIO, ZLayer }
+import zio.{ Has, UIO, ULayer, ZIO, ZLayer }
 
 /**
  * An interface to check a pod's health.
@@ -24,17 +24,20 @@ object PodsHealth {
    * A layer that considers pods as always alive.
    * This is useful for testing only.
    */
-  val noop: ULayer[PodsHealth] =
-    ZLayer.succeed(new PodsHealth {
-      def isAlive(podAddress: PodAddress): UIO[Boolean] = ZIO.succeed(true)
-    })
+  val noop: ULayer[Has[PodsHealth]] =
+    ZLayer.succeed((_: PodAddress) => ZIO.succeed(true))
 
   /**
    * A layer that pings the pod directly to check if it's alive.
    * This is useful for developing and testing but not reliable in production.
    */
-  val local: ZLayer[Pods, Nothing, PodsHealth] =
-    ZLayer {
-      ZIO.serviceWith[Pods](podApi => (podAddress: PodAddress) => podApi.ping(podAddress).option.map(_.isDefined))
-    }
+  val local: ZLayer[Has[Pods], Nothing, Has[PodsHealth]] =
+    ZIO
+      .service[Pods]
+      .map(podApi =>
+        new PodsHealth {
+          def isAlive(podAddress: PodAddress): UIO[Boolean] = podApi.ping(podAddress).option.map(_.isDefined)
+        }
+      )
+      .toLayer
 }

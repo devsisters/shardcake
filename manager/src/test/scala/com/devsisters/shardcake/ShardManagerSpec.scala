@@ -2,19 +2,23 @@ package com.devsisters.shardcake
 
 import cats.syntax.all._
 import com.devsisters.shardcake.ShardManager.{ PodWithMetadata, ShardManagerState }
-import com.devsisters.shardcake.interfaces.{ Pods, PodsHealth, Storage }
+import com.devsisters.shardcake.interfaces.{ Logging, Pods, PodsHealth, Storage }
 import zio._
+import zio.clock.Clock
+import zio.console._
+import zio.duration._
 import zio.stream.ZStream
 import zio.test._
+import zio.test.environment.TestClock
 
 import java.time.OffsetDateTime
 
-object ShardManagerSpec extends ZIOSpecDefault {
+object ShardManagerSpec extends DefaultRunnableSpec {
   private val pod1 = PodWithMetadata(Pod(PodAddress("1", 1), "1.0.0"), OffsetDateTime.MIN)
   private val pod2 = PodWithMetadata(Pod(PodAddress("2", 2), "1.0.0"), OffsetDateTime.MIN)
   private val pod3 = PodWithMetadata(Pod(PodAddress("3", 3), "1.0.0"), OffsetDateTime.MIN)
 
-  override def spec: Spec[Any, Throwable] =
+  override def spec =
     suite("ShardManagerSpec")(
       suite("Unit tests")(
         test("Rebalance unbalanced assignments") {
@@ -128,12 +132,12 @@ object ShardManagerSpec extends ZIOSpecDefault {
         }
       ),
       suite("Simulations")(
-        test("Simulate scaling out scenario") {
+        testM("Simulate scaling out scenario") {
           (for {
             // setup 20 pods first
             _           <- simulate((1 to 20).toList.map(i => SimulationEvent.PodRegister(Pod(PodAddress("server", i), "1"))))
             _           <- TestClock.adjust(10 minutes)
-            assignments <- ZIO.serviceWithZIO[ShardManager](_.getAssignments)
+            assignments <- ZIO.serviceWith[ShardManager](_.getAssignments)
             // check that all pods are assigned and that all pods have 15 shards each
             assert1      = assertTrue(assignments.values.forall(_.isDefined)) && assertTrue(
                              assignments.groupBy(_._2).forall(_._2.size == 15)
@@ -142,23 +146,23 @@ object ShardManagerSpec extends ZIOSpecDefault {
             // bring 5 new pods
             _           <- simulate((21 to 25).toList.map(i => SimulationEvent.PodRegister(Pod(PodAddress("server", i), "1"))))
             _           <- TestClock.adjust(20 seconds)
-            assignments <- ZIO.serviceWithZIO[ShardManager](_.getAssignments)
+            assignments <- ZIO.serviceWith[ShardManager](_.getAssignments)
             // check that new pods received some shards but only 6
             assert2      = assertTrue(assignments.groupBy(_._2).filter(_._1.exists(_.port > 20)).forall(_._2.size == 6))
 
             _           <- TestClock.adjust(1 minute)
-            assignments <- ZIO.serviceWithZIO[ShardManager](_.getAssignments)
+            assignments <- ZIO.serviceWith[ShardManager](_.getAssignments)
             // check that all pods now have 12 shards each
             assert3      = assertTrue(assignments.groupBy(_._2).forall(_._2.size == 12))
 
-          } yield assert1 && assert2 && assert3).provide(shardManager)
+          } yield assert1 && assert2 && assert3).provideSomeLayer[TestClock with Clock with Console](shardManager)
         },
-        test("Simulate scaling down scenario") {
+        testM("Simulate scaling down scenario") {
           (for {
             // setup 25 pods first
             _           <- simulate((1 to 25).toList.map(i => SimulationEvent.PodRegister(Pod(PodAddress("server", i), "1"))))
             _           <- TestClock.adjust(10 minutes)
-            assignments <- ZIO.serviceWithZIO[ShardManager](_.getAssignments)
+            assignments <- ZIO.serviceWith[ShardManager](_.getAssignments)
             // check that all pods are assigned and that all pods have 12 shards each
             assert1      = assertTrue(assignments.values.forall(_.isDefined)) && assertTrue(
                              assignments.groupBy(_._2).forall(_._2.size == 12)
@@ -167,13 +171,13 @@ object ShardManagerSpec extends ZIOSpecDefault {
             // remove 5 pods
             _           <- simulate((21 to 25).toList.map(i => SimulationEvent.PodUnregister(PodAddress("server", i))))
             _           <- TestClock.adjust(1 second)
-            assignments <- ZIO.serviceWithZIO[ShardManager](_.getAssignments)
+            assignments <- ZIO.serviceWith[ShardManager](_.getAssignments)
             // check that all shards have been rebalanced already
             assert2      = assertTrue(assignments.values.forall(_.exists(_.port <= 20))) && assertTrue(
                              assignments.groupBy(_._2).forall(_._2.size == 15)
                            )
 
-          } yield assert1 && assert2).provide(shardManager)
+          } yield assert1 && assert2).provideSomeLayer[TestClock with Clock with Console](shardManager)
         }
       )
     )
@@ -184,9 +188,9 @@ object ShardManagerSpec extends ZIOSpecDefault {
     case class PodUnregister(podAddress: PodAddress) extends SimulationEvent
   }
 
-  val config: ULayer[ManagerConfig] = ZLayer.succeed(ManagerConfig.default)
+  val config: ULayer[Has[ManagerConfig]] = ZLayer.succeed(ManagerConfig.default)
 
-  val storage: ULayer[Storage] = ZLayer.succeed(new Storage {
+  val storage: ULayer[Has[Storage]] = ZLayer.succeed(new Storage {
     def getAssignments: Task[Map[ShardId, Option[PodAddress]]]                       = ZIO.succeed(Map.empty)
     def saveAssignments(assignments: Map[ShardId, Option[PodAddress]]): Task[Unit]   = ZIO.unit
     def assignmentsStream: ZStream[Any, Throwable, Map[ShardId, Option[PodAddress]]] = ZStream.empty
@@ -194,13 +198,15 @@ object ShardManagerSpec extends ZIOSpecDefault {
     def savePods(pods: Map[PodAddress, Pod]): Task[Unit]                             = ZIO.unit
   })
 
-  val shardManager: ZLayer[Any, Throwable, ShardManager] =
-    ZLayer.make[ShardManager](config, storage, Pods.noop, PodsHealth.local, ShardManager.live)
+  val shardManager: ZLayer[Console with Clock, Throwable, Has[ShardManager]] =
+    ZLayer.requires[Clock] ++
+      ZLayer.requires[Console] ++
+      Logging.console ++ config ++ storage ++ Pods.noop >+> PodsHealth.local >>> ShardManager.live
 
-  def simulate(events: List[SimulationEvent]): RIO[ShardManager, Unit] =
+  def simulate(events: List[SimulationEvent]): RIO[Has[ShardManager], Unit] =
     for {
       shardManager <- ZIO.service[ShardManager]
-      _            <- ZIO.foreachDiscard(events) {
+      _            <- ZIO.foreach_(events) {
                         case SimulationEvent.PodRegister(pod)          => shardManager.register(pod)
                         case SimulationEvent.PodUnregister(podAddress) => shardManager.unregister(podAddress)
                       }

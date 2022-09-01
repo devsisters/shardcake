@@ -1,14 +1,13 @@
 val scala213 = "2.13.8"
-val scala3   = "3.1.3"
-val allScala = Seq(scala213, scala3)
+val allScala = Seq(scala213)
 
-val zioVersion            = "2.0.2"
-val zioGrpcVersion        = "0.0.0+1-78c41c4f-SNAPSHOT"
-val zioK8sVersion         = "2.0.0"
-val zioCacheVersion       = "0.2.0"
-val zioCatsInteropVersion = "3.3.0"
+val zioVersion            = "1.0.16"
+val zioGrpcVersion        = "0.5.2"
+val zioK8sVersion         = "1.4.7"
+val zioCacheVersion       = "0.1.4"
+val zioCatsInteropVersion = "13.0.0.1"
 val sttpVersion           = "3.7.0"
-val calibanVersion        = "2.0.0"
+val calibanVersion        = "1.4.3"
 val redis4catsVersion     = "1.2.0"
 val chillVersion          = "0.9.5"
 val testContainersVersion = "0.40.9"
@@ -91,8 +90,8 @@ lazy val entities = project
   .settings(
     libraryDependencies ++=
       Seq(
-        "com.github.ghostdogpr"         %% "caliban-client"                % calibanVersion,
-        "com.softwaremill.sttp.client3" %% "async-http-client-backend-zio" % sttpVersion
+        "com.github.ghostdogpr"         %% "caliban-client"                 % calibanVersion,
+        "com.softwaremill.sttp.client3" %% "async-http-client-backend-zio1" % sttpVersion
       )
   )
 
@@ -104,10 +103,10 @@ lazy val healthK8s = project
   .settings(
     libraryDependencies ++=
       Seq(
-        "com.coralogix"                 %% "zio-k8s-client"                % zioK8sVersion,
-        "dev.zio"                       %% "zio-cache"                     % zioCacheVersion,
-        "com.softwaremill.sttp.client3" %% "async-http-client-backend-zio" % sttpVersion,
-        "com.softwaremill.sttp.client3" %% "slf4j-backend"                 % sttpVersion
+        "com.coralogix"                 %% "zio-k8s-client"                 % zioK8sVersion,
+        "dev.zio"                       %% "zio-cache"                      % zioCacheVersion,
+        "com.softwaremill.sttp.client3" %% "async-http-client-backend-zio1" % sttpVersion,
+        "com.softwaremill.sttp.client3" %% "slf4j-backend"                  % sttpVersion
       )
   )
 

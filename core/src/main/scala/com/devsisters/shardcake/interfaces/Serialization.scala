@@ -1,6 +1,6 @@
 package com.devsisters.shardcake.interfaces
 
-import zio.{ Task, ULayer, ZIO, ZLayer }
+import zio.{ Has, Task, ULayer, ZIO, ZLayer, ZManaged }
 
 import java.io.{ ByteArrayInputStream, ByteArrayOutputStream, ObjectInputStream, ObjectOutputStream }
 
@@ -26,22 +26,18 @@ object Serialization {
    * A layer that uses Java serialization for encoding and decoding messages.
    * This is useful for testing and not recommended to use in production.
    */
-  val javaSerialization: ULayer[Serialization] =
+  val javaSerialization: ULayer[Has[Serialization]] =
     ZLayer.succeed(new Serialization {
-      def encode(message: Any): Task[Array[Byte]] =
-        ZIO.scoped {
-          val stream = new ByteArrayOutputStream()
-          ZIO
-            .fromAutoCloseable(ZIO.attempt(new ObjectOutputStream(stream)))
-            .flatMap(oos => ZIO.attempt(oos.writeObject(message)))
-            .as(stream.toByteArray)
-        }
+      def encode(message: Any): Task[Array[Byte]] = {
+        val stream = new ByteArrayOutputStream()
+        ZManaged
+          .fromAutoCloseable(ZIO.effect(new ObjectOutputStream(stream)))
+          .use(oos => ZIO.effect(oos.writeObject(message)).as(stream.toByteArray))
+      }
 
       def decode[A](bytes: Array[Byte]): Task[A] =
-        ZIO.scoped {
-          ZIO
-            .fromAutoCloseable(ZIO.attempt(new ObjectInputStream(new ByteArrayInputStream(bytes))))
-            .flatMap(ois => ZIO.attempt(ois.readObject.asInstanceOf[A]))
-        }
+        ZManaged
+          .fromAutoCloseable(ZIO.effect(new ObjectInputStream(new ByteArrayInputStream(bytes))))
+          .use(ois => ZIO.effect(ois.readObject.asInstanceOf[A]))
     })
 }

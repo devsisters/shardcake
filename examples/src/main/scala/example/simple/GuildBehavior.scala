@@ -2,7 +2,7 @@ package example.simple
 
 import com.devsisters.shardcake.Messenger.Replier
 import com.devsisters.shardcake.{ EntityType, Sharding }
-import zio.{ Dequeue, RIO, Ref }
+import zio.{ Dequeue, Has, RIO, Ref }
 
 import scala.util.{ Failure, Success, Try }
 
@@ -16,12 +16,12 @@ object GuildBehavior {
 
   object Guild extends EntityType[GuildMessage]("guild")
 
-  def behavior(entityId: String, messages: Dequeue[GuildMessage]): RIO[Sharding, Nothing] =
+  def behavior(entityId: String, messages: Dequeue[GuildMessage]): RIO[Has[Sharding], Nothing] =
     Ref
       .make(Set.empty[String])
       .flatMap(state => messages.take.flatMap(handleMessage(state, _)).forever)
 
-  def handleMessage(state: Ref[Set[String]], message: GuildMessage): RIO[Sharding, Unit] =
+  def handleMessage(state: Ref[Set[String]], message: GuildMessage): RIO[Has[Sharding], Unit] =
     message match {
       case GuildMessage.Join(userId, replier) =>
         state.get.flatMap(members =>

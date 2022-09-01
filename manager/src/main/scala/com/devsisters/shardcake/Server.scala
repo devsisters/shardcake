@@ -6,13 +6,15 @@ import zhttp.http.Middleware.cors
 import zhttp.http._
 import zhttp.service.{ Server => ZServer }
 import zio._
+import zio.clock.Clock
+import zio.console.Console
 
 object Server {
 
   /**
    * Start an HTTP server that exposes the Shard Manager GraphQL API
    */
-  val run: RIO[ShardManager with ManagerConfig, Nothing] =
+  val run: RIO[Has[ShardManager] with Has[ManagerConfig] with Clock with Console, Nothing] =
     for {
       config      <- ZIO.service[ManagerConfig]
       interpreter <- (GraphQLApi.api @@ printErrors).interpreter

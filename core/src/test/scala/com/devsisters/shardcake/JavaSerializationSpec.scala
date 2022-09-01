@@ -1,19 +1,20 @@
 package com.devsisters.shardcake
 
 import com.devsisters.shardcake.interfaces.Serialization
-import zio.{ Scope, ZIO }
+import zio.ZIO
 import zio.test._
+import zio.test.environment.TestEnvironment
 
-object JavaSerializationSpec extends ZIOSpecDefault {
-  def spec: Spec[TestEnvironment with Scope, Any] =
+object JavaSerializationSpec extends DefaultRunnableSpec {
+  def spec: ZSpec[TestEnvironment, Any] =
     suite("JavaSerializationSpec")(
-      test("serialize back and forth") {
+      testM("serialize back and forth") {
         case class Test(a: Int, b: String)
         val expected = Test(2, "test")
         for {
-          bytes  <- ZIO.serviceWithZIO[Serialization](_.encode(expected))
-          actual <- ZIO.serviceWithZIO[Serialization](_.decode[Test](bytes))
+          bytes  <- ZIO.serviceWith[Serialization](_.encode(expected))
+          actual <- ZIO.serviceWith[Serialization](_.decode[Test](bytes))
         } yield assertTrue(expected == actual)
       }
-    ).provideShared(Serialization.javaSerialization)
+    ).provideLayerShared(Serialization.javaSerialization)
 }

@@ -3,49 +3,49 @@ package com.devsisters.shardcake
 import com.devsisters.shardcake.CounterActor.CounterMessage._
 import com.devsisters.shardcake.CounterActor._
 import com.devsisters.shardcake.Messenger.Replier
-import com.devsisters.shardcake.interfaces.{ Pods, Serialization, Storage }
+import com.devsisters.shardcake.interfaces.{ Logging, Pods, Serialization, Storage }
 import zio._
-import zio.test.TestAspect.{ sequential, withLiveClock }
+import zio.clock.Clock
+import zio.console.Console
+import zio.duration._
+import zio.random.Random
+import zio.test.TestAspect.sequential
 import zio.test._
+import zio.test.environment.TestEnvironment
 
-object ShardingSpec extends ZIOSpecDefault {
-  def spec: Spec[TestEnvironment with Scope, Any] =
+object ShardingSpec extends DefaultRunnableSpec {
+
+  private val layer =
+    (Clock.live ++ Random.live ++ Console.live ++ ZLayer.succeed(Config.default) >+>
+      ShardManagerClient.local ++ Logging.console ++ Pods.noop ++ Storage.memory >+>
+      Sharding.live ++ Serialization.javaSerialization).mapError(TestFailure.fail)
+
+  def spec: ZSpec[TestEnvironment, Throwable] =
     suite("ShardingSpec")(
-      test("Send message to entities") {
-        ZIO.scoped {
+      testM("Send message to entities") {
+        (Sharding.registerManaged *> Sharding.registerEntity(Counter, behavior)).use { counter =>
           for {
-            _       <- Sharding.registerScoped
-            counter <- Sharding.registerEntity(Counter, behavior)
-            _       <- counter.sendDiscard("c1")(IncrementCounter)
-            _       <- counter.sendDiscard("c1")(DecrementCounter)
-            _       <- counter.sendDiscard("c1")(IncrementCounter)
-            _       <- counter.sendDiscard("c1")(IncrementCounter)
-            _       <- counter.sendDiscard("c2")(IncrementCounter)
-            _       <- Clock.sleep(1 second)
-            c1      <- counter.send("c1")(GetCounter.apply)
-            c2      <- counter.send("c2")(GetCounter.apply)
+            _  <- counter.sendDiscard("c1")(IncrementCounter)
+            _  <- counter.sendDiscard("c1")(DecrementCounter)
+            _  <- counter.sendDiscard("c1")(IncrementCounter)
+            _  <- counter.sendDiscard("c1")(IncrementCounter)
+            _  <- counter.sendDiscard("c2")(IncrementCounter)
+            _  <- clock.sleep(1 second)
+            c1 <- counter.send("c1")(GetCounter.apply)
+            c2 <- counter.send("c2")(GetCounter.apply)
           } yield assertTrue(c1 == 2) && assertTrue(c2 == 1)
         }
       },
-      test("Cluster singleton") {
-        ZIO.scoped {
+      testM("Cluster singleton") {
+        Sharding.registerManaged.use(_ =>
           for {
-            _   <- Sharding.registerScoped
-            _   <- Sharding.registerScoped
             p   <- Promise.make[Nothing, Unit]
             _   <- Sharding.registerSingleton("singleton", p.succeed(()) *> ZIO.never)
             res <- p.await
           } yield assertTrue(res == ())
-        }
+        )
       }
-    ).provideShared(
-      Sharding.live,
-      Serialization.javaSerialization,
-      Pods.noop,
-      ShardManagerClient.local,
-      Storage.memory,
-      ZLayer.succeed(Config.default)
-    ) @@ sequential @@ withLiveClock
+    ).provideLayerShared(layer) @@ sequential
 }
 
 object CounterActor {
@@ -59,8 +59,8 @@ object CounterActor {
 
   object Counter extends EntityType[CounterMessage]("counter")
 
-  def behavior(entityId: String, messages: Dequeue[CounterMessage]): RIO[Sharding, Nothing] =
-    ZIO.logInfo(s"Started entity $entityId") *>
+  def behavior(entityId: String, messages: Dequeue[CounterMessage]): RIO[Has[Sharding], Nothing] =
+    ZIO.debug(s"Started entity $entityId") *>
       Ref
         .make(0)
         .flatMap(state =>
