@@ -2,7 +2,6 @@ package com.devsisters.shardcake
 
 import caliban.ZHttpAdapter
 import caliban.wrappers.Wrappers.printErrors
-import com.devsisters.shardcake.internal.GraphQLApi
 import zhttp.http.Middleware.cors
 import zhttp.http._
 import zhttp.service.{ Server => ZServer }
