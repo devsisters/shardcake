@@ -22,7 +22,7 @@ object ShardingSpec extends DefaultRunnableSpec {
   def spec: ZSpec[TestEnvironment, Throwable] =
     suite("ShardingSpec")(
       testM("Send message to entities") {
-        (Sharding.registerManaged *> Sharding.registerEntity(Counter, behavior)).use { _ =>
+        (Sharding.registerEntity(Counter, behavior) *> Sharding.registerManaged).use { _ =>
           for {
             counter <- Sharding.messenger(Counter)
             _       <- counter.sendDiscard("c1")(IncrementCounter)

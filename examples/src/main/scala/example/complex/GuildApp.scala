@@ -16,7 +16,7 @@ object GuildApp extends zio.App {
       .toLayer
 
   val program =
-    Sharding.registerEntity(Guild, behavior).use { _ =>
+    (Sharding.registerEntity(Guild, behavior) *> Sharding.registerManaged).use { _ =>
       Sharding.messenger(Guild).map { guild =>
         for {
           user1 <- random.nextUUID.map(_.toString)
@@ -41,5 +41,5 @@ object GuildApp extends zio.App {
   val layer    = sharding ++ service ++ redis
 
   def run(args: List[String]): URIO[ZEnv, ExitCode] =
-    Sharding.registerManaged.use(_ => program).provideLayer(layer).exitCode
+    program.provideLayer(layer).exitCode
 }

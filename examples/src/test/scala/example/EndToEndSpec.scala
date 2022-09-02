@@ -83,7 +83,7 @@ object EndToEndSpec extends DefaultRunnableSpec {
   def spec =
     suite("EndToEndSpec")(
       testM("Send message to entities") {
-        (Sharding.registerManaged *> Sharding.registerEntity(Guild, GuildBehavior.behavior)).use { _ =>
+        (Sharding.registerEntity(Guild, GuildBehavior.behavior) *> Sharding.registerManaged).use { _ =>
           for {
             guild   <- Sharding.messenger(Guild)
             _       <- guild.send("guild1")(Join("user1", _))
