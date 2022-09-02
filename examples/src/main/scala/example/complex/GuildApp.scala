@@ -17,7 +17,9 @@ object GuildApp extends ZIOAppDefault {
 
   val program: ZIO[Sharding with Scope with Serialization with RedisCommands[Task, String, String], Throwable, Unit] =
     for {
-      guild <- Sharding.registerEntity(Guild, behavior)
+      _     <- Sharding.registerEntity(Guild, behavior)
+      _     <- Sharding.registerScoped
+      guild <- Sharding.messenger(Guild)
       user1 <- Random.nextUUID.map(_.toString)
       user2 <- Random.nextUUID.map(_.toString)
       user3 <- Random.nextUUID.map(_.toString)
@@ -40,8 +42,6 @@ object GuildApp extends ZIOAppDefault {
         ShardManagerClient.liveWithSttp,
         GrpcPods.live,
         Sharding.live,
-        GrpcShardingService.live.flatMap(_ =>
-          ZLayer.scoped(Sharding.registerScoped) // register the node after the gRPC server is running
-        )
+        GrpcShardingService.live
       )
 }

@@ -26,7 +26,8 @@ class Sharding private (
   isShuttingDownRef: Ref[Boolean],
   shardManager: ShardManagerClient,
   pods: Pods,
-  storage: Storage
+  storage: Storage,
+  serialization: Serialization
 ) { self =>
   private[shardcake] def getShardId(entityId: String): ShardId =
     math.abs(entityId.hashCode % config.numberOfShards) + 1
@@ -163,42 +164,12 @@ class Sharding private (
       ZIO.whenCase(promises.get(replier.id)) { case Some(p) => p.succeed(Some(reply)) }.as(promises - replier.id)
     )
 
-  def registerEntity[R, Req: Tag](
-    entityType: EntityType[Req],
-    behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
-    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
-  ): URIO[Scope with Serialization with R, Messenger[Req]] =
-    for {
-      serialization <- ZIO.service[Serialization]
-      entityManager <- EntityManager.make(behavior, terminateMessage, self, config)
-      binaryQueue   <- Queue.unbounded[(BinaryMessage, Promise[Throwable, Option[Array[Byte]]])].withFinalizer(_.shutdown)
-      _             <- entityStates.update(_.updated(entityType.name, EntityState(binaryQueue, entityManager)))
-      _             <- ZStream
-                         .fromQueue(binaryQueue)
-                         .mapZIO { case (msg, p) =>
-                           serialization
-                             .decode[Req](msg.body)
-                             .map(req => Some((req, msg.entityId, p, msg.replyId)))
-                             .catchAll(p.fail(_).as(None))
-                         }
-                         .collectSome
-                         .runForeach { case (msg, entityId, p, replyId) =>
-                           Promise
-                             .make[Throwable, Option[Any]]
-                             .flatMap(p2 =>
-                               entityManager.send(entityId, msg, replyId, p2).catchAll(p.fail) *>
-                                 p2.await.flatMap(
-                                   ZIO.foreach(_)(serialization.encode).flatMap(p.succeed(_)).catchAll(p.fail(_)).fork
-                                 )
-                             )
-                         }
-                         .forkScoped
-    } yield new Messenger[Req] {
-
-      def sendDiscard(entityId: String)(msg: Req): UIO[Unit] =
+  def messenger[Msg](entityType: EntityType[Msg]): Messenger[Msg] =
+    new Messenger[Msg] {
+      def sendDiscard(entityId: String)(msg: Msg): UIO[Unit] =
         sendMessage(entityId, msg, None).timeout(config.sendTimeout).forkDaemon.unit
 
-      def send[Res](entityId: String)(msg: Replier[Res] => Req): Task[Res] =
+      def send[Res](entityId: String)(msg: Replier[Res] => Msg): Task[Res] =
         Random.nextUUID.flatMap { uuid =>
           val body = msg(Replier(uuid.toString))
           sendMessage[Res](entityId, body, Some(uuid.toString)).flatMap {
@@ -209,7 +180,7 @@ class Sharding private (
             .interruptible
         }
 
-      private def sendMessage[Res](entityId: String, msg: Req, replyId: Option[String]): Task[Option[Res]] = {
+      private def sendMessage[Res](entityId: String, msg: Msg, replyId: Option[String]): Task[Option[Res]] = {
         val shardId                    = getShardId(entityId)
         def trySend: Task[Option[Res]] =
           for {
@@ -223,8 +194,16 @@ class Sharding private (
                                 Promise
                                   .make[Throwable, Option[Any]]
                                   .flatMap(p =>
-                                    entityManager.send(entityId, msg, replyId, p) *>
-                                      p.await.map(_.asInstanceOf[Option[Res]])
+                                    entityStates.get.flatMap(s =>
+                                      ZIO
+                                        .foreach(s.get(entityType.name))(
+                                          _.entityManager
+                                            .asInstanceOf[EntityManager[Msg]]
+                                            .send(entityId, msg, replyId, p) *>
+                                            p.await.map(_.asInstanceOf[Option[Res]])
+                                        )
+                                        .map(_.flatten)
+                                    )
                                   )
                               } else {
                                 serialization
@@ -262,6 +241,37 @@ class Sharding private (
         trySend
       }
     }
+
+  def registerEntity[R, Req: Tag](
+    entityType: EntityType[Req],
+    behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
+    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
+  ): URIO[Scope with R, Unit] =
+    for {
+      entityManager <- EntityManager.make(behavior, terminateMessage, self, config)
+      binaryQueue   <- Queue.unbounded[(BinaryMessage, Promise[Throwable, Option[Array[Byte]]])].withFinalizer(_.shutdown)
+      _             <- entityStates.update(_.updated(entityType.name, EntityState(binaryQueue, entityManager)))
+      _             <- ZStream
+                         .fromQueue(binaryQueue)
+                         .mapZIO { case (msg, p) =>
+                           serialization
+                             .decode[Req](msg.body)
+                             .map(req => Some((req, msg.entityId, p, msg.replyId)))
+                             .catchAll(p.fail(_).as(None))
+                         }
+                         .collectSome
+                         .runForeach { case (msg, entityId, p, replyId) =>
+                           Promise
+                             .make[Throwable, Option[Any]]
+                             .flatMap(p2 =>
+                               entityManager.send(entityId, msg, replyId, p2).catchAll(p.fail) *>
+                                 p2.await.flatMap(
+                                   ZIO.foreach(_)(serialization.encode).flatMap(p.succeed(_)).catchAll(p.fail(_)).fork
+                                 )
+                             )
+                         }
+                         .forkScoped
+    } yield ()
 }
 
 object Sharding {
@@ -273,13 +283,14 @@ object Sharding {
   /**
    * A layer that sets up sharding communication between pods.
    */
-  val live: ZLayer[Pods with ShardManagerClient with Storage with Config, Throwable, Sharding] =
+  val live: ZLayer[Pods with ShardManagerClient with Storage with Serialization with Config, Throwable, Sharding] =
     ZLayer.scoped {
       for {
         config                    <- ZIO.service[Config]
         pods                      <- ZIO.service[Pods]
         shardManager              <- ZIO.service[ShardManagerClient]
         storage                   <- ZIO.service[Storage]
+        serialization             <- ZIO.service[Serialization]
         shardsCache               <- Ref.make(Map.empty[ShardId, PodAddress])
         entityStates              <- Ref.make[Map[String, EntityState]](Map())
         singletons                <- Ref.Synchronized
@@ -307,7 +318,8 @@ object Sharding {
                                        shuttingDown,
                                        shardManager,
                                        pods,
-                                       storage
+                                       storage,
+                                       serialization
                                      )
         _                         <- sharding.refreshAssignments
       } yield sharding
@@ -348,8 +360,14 @@ object Sharding {
     entityType: EntityType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
-  ): URIO[Sharding with Scope with Serialization with R, Messenger[Req]] =
+  ): URIO[Sharding with Scope with R, Unit] =
     ZIO.serviceWithZIO[Sharding](_.registerEntity[R, Req](entityType, behavior, terminateMessage))
+
+  /**
+   * Get an object that allows sending messages to a given entity type.
+   */
+  def messenger[Msg](entityType: EntityType[Msg]): URIO[Sharding, Messenger[Msg]] =
+    ZIO.serviceWith[Sharding](_.messenger(entityType))
 
   /**
    * Get the number of pods currently registered to the Shard Manager

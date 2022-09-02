@@ -70,8 +70,9 @@ object EndToEndSpec extends ZIOSpecDefault {
       test("Send message to entities") {
         ZIO.scoped {
           for {
+            _       <- Sharding.registerEntity(Guild, GuildBehavior.behavior)
             _       <- Sharding.registerScoped
-            guild   <- Sharding.registerEntity(Guild, GuildBehavior.behavior)
+            guild   <- Sharding.messenger(Guild)
             _       <- guild.send("guild1")(Join("user1", _))
             _       <- guild.send("guild1")(Join("user2", _))
             _       <- guild.send("guild1")(Join("user3", _))

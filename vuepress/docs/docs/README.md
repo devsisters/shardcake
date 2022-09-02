@@ -165,11 +165,15 @@ def behavior(entityId: String, messages: Dequeue[GuildMessage]): RIO[Sharding, N
 ### Run the application
 
 To run our entities, we need to register their behavior to the Sharding system, which is done by calling `Sharding.registerEntity`, passing the entity type and the behavior.
-As a result, we get a `Messenger[GuildMessage]` which we can now use to send messages to entities.
+We then need to notify the Shard Manager that a new pod is now ready to run entities, and shards may be assigned to it.
+This is done by calling `Sharding.registerScoped` (which is the equivalent of calling `Sharding.register` when the program starts and `Sharding.unregister` when the program ends).
+To communicate with our entities, we need a `Messenger[GuildMessage]`, which we get by calling `Sharding.messenger`. You can even use `messenger` on a pod that is not hosting any entities.
 ```scala
   val program =
     for {
-      guild <- Sharding.registerEntity(Guild, behavior)
+      _     <- Sharding.registerEntity(Guild, behavior)
+      _     <- Sharding.registerScoped
+      guild <- Sharding.messenger(Guild)
       _     <- guild.send("guild1")(Join("user1", _)).debug
       _     <- guild.send("guild1")(Join("user2", _)).debug
       _     <- guild.send("guild1")(Join("user3", _)).debug
@@ -179,14 +183,10 @@ As a result, we get a `Messenger[GuildMessage]` which we can now use to send mes
     } yield ()
 ```
 
-To run all this, we need to initialize the Sharding system by calling `Sharding.registerScoped` (which is the equivalent of calling `Sharding.register` when the program starts and `Sharding.unregister` when the program ends).
-This will notify the Shard Manager that a new pod is now ready to run entities, and shards may be assigned to it.
 Finally, we provide all required dependencies as we did for the Shard Manager.
 ```scala
 def run: Task[Unit] =
-  ZIO.scoped {
-    Sharding.registerScoped *> program
-  }.provide(
+  ZIO.scoped(program).provide(
     ZLayer.succeed(Config.default),
     ZLayer.succeed(GrpcConfig.default),
     Serialization.javaSerialization, // use java serialization for messages

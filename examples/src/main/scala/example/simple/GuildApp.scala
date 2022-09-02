@@ -9,7 +9,9 @@ import zio._
 object GuildApp extends ZIOAppDefault {
   val program =
     for {
-      guild <- Sharding.registerEntity(Guild, behavior)
+      _     <- Sharding.registerEntity(Guild, behavior)
+      _     <- Sharding.registerScoped
+      guild <- Sharding.messenger(Guild)
       _     <- guild.send("guild1")(Join("user1", _)).debug
       _     <- guild.send("guild1")(Join("user2", _)).debug
       _     <- guild.send("guild1")(Join("user3", _)).debug
@@ -19,16 +21,16 @@ object GuildApp extends ZIOAppDefault {
     } yield ()
 
   def run: Task[Unit] =
-    ZIO.scoped {
-      Sharding.registerScoped *> program
-    }.provide(
-      ZLayer.succeed(Config.default),
-      ZLayer.succeed(GrpcConfig.default),
-      Serialization.javaSerialization,
-      Storage.memory,
-      ShardManagerClient.liveWithSttp,
-      GrpcPods.live,
-      Sharding.live,
-      GrpcShardingService.live
-    )
+    ZIO
+      .scoped(program)
+      .provide(
+        ZLayer.succeed(Config.default),
+        ZLayer.succeed(GrpcConfig.default),
+        Serialization.javaSerialization,
+        Storage.memory,
+        ShardManagerClient.liveWithSttp,
+        GrpcPods.live,
+        Sharding.live,
+        GrpcShardingService.live
+      )
 }

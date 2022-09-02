@@ -14,8 +14,9 @@ object ShardingSpec extends ZIOSpecDefault {
       test("Send message to entities") {
         ZIO.scoped {
           for {
+            _       <- Sharding.registerEntity(Counter, behavior)
             _       <- Sharding.registerScoped
-            counter <- Sharding.registerEntity(Counter, behavior)
+            counter <- Sharding.messenger(Counter)
             _       <- counter.sendDiscard("c1")(IncrementCounter)
             _       <- counter.sendDiscard("c1")(DecrementCounter)
             _       <- counter.sendDiscard("c1")(IncrementCounter)
@@ -30,10 +31,9 @@ object ShardingSpec extends ZIOSpecDefault {
       test("Cluster singleton") {
         ZIO.scoped {
           for {
-            _   <- Sharding.registerScoped
-            _   <- Sharding.registerScoped
             p   <- Promise.make[Nothing, Unit]
             _   <- Sharding.registerSingleton("singleton", p.succeed(()) *> ZIO.never)
+            _   <- Sharding.registerScoped
             res <- p.await
           } yield assertTrue(res == ())
         }
