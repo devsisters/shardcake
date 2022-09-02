@@ -72,18 +72,20 @@ object EndToEndSpec extends DefaultRunnableSpec {
   val client         = config ++ logging >>> ShardManagerClient.liveWithSttp
   val redisContainer = Blocking.live >>> container >>> redis
   val storage        = redisConfig ++ redisContainer >>> StorageRedis.live
-  val sharding       = pods ++ client ++ storage ++ config ++ clock ++ Random.live ++ logging >>> Sharding.live
+  val sharding       =
+    pods ++ client ++ storage ++ config ++ clock ++ Random.live ++ logging ++ KryoSerialization.live >+> Sharding.live
   val service        = config ++ sharding ++ clock >+> GrpcShardingService.live
   val health         = pods >>> PodsHealth.local
   val manager        = health ++ pods ++ storage ++ managerConfig ++ logging ++ clock >>> ShardManager.live
   val managerServer  = manager ++ managerConfig ++ clock ++ Console.live >>> shardManagerServer
-  val layer          = sharding ++ service ++ KryoSerialization.live ++ clock ++ Random.live ++ redisContainer ++ managerServer
+  val layer          = sharding ++ service ++ redisContainer ++ managerServer
 
   def spec =
     suite("EndToEndSpec")(
       testM("Send message to entities") {
-        (Sharding.registerManaged *> Sharding.registerEntity(Guild, GuildBehavior.behavior)).use { guild =>
+        (Sharding.registerManaged *> Sharding.registerEntity(Guild, GuildBehavior.behavior)).use { _ =>
           for {
+            guild   <- Sharding.messenger(Guild)
             _       <- guild.send("guild1")(Join("user1", _))
             _       <- guild.send("guild1")(Join("user2", _))
             _       <- guild.send("guild1")(Join("user3", _))

@@ -16,22 +16,23 @@ object ShardingSpec extends DefaultRunnableSpec {
 
   private val layer =
     (Clock.live ++ Random.live ++ ZLayer.succeed(Config.default) >+>
-      ShardManagerClient.local ++ Logging.debug ++ Pods.noop ++ Storage.memory >+>
-      Sharding.live ++ Serialization.javaSerialization).mapError(TestFailure.fail)
+      ShardManagerClient.local ++ Logging.debug ++ Pods.noop ++ Storage.memory ++ Serialization.javaSerialization >+>
+      Sharding.live).mapError(TestFailure.fail)
 
   def spec: ZSpec[TestEnvironment, Throwable] =
     suite("ShardingSpec")(
       testM("Send message to entities") {
-        (Sharding.registerManaged *> Sharding.registerEntity(Counter, behavior)).use { counter =>
+        (Sharding.registerManaged *> Sharding.registerEntity(Counter, behavior)).use { _ =>
           for {
-            _  <- counter.sendDiscard("c1")(IncrementCounter)
-            _  <- counter.sendDiscard("c1")(DecrementCounter)
-            _  <- counter.sendDiscard("c1")(IncrementCounter)
-            _  <- counter.sendDiscard("c1")(IncrementCounter)
-            _  <- counter.sendDiscard("c2")(IncrementCounter)
-            _  <- clock.sleep(1 second)
-            c1 <- counter.send("c1")(GetCounter.apply)
-            c2 <- counter.send("c2")(GetCounter.apply)
+            counter <- Sharding.messenger(Counter)
+            _       <- counter.sendDiscard("c1")(IncrementCounter)
+            _       <- counter.sendDiscard("c1")(DecrementCounter)
+            _       <- counter.sendDiscard("c1")(IncrementCounter)
+            _       <- counter.sendDiscard("c1")(IncrementCounter)
+            _       <- counter.sendDiscard("c2")(IncrementCounter)
+            _       <- clock.sleep(1 second)
+            c1      <- counter.send("c1")(GetCounter.apply)
+            c2      <- counter.send("c2")(GetCounter.apply)
           } yield assertTrue(c1 == 2) && assertTrue(c2 == 1)
         }
       },

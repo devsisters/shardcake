@@ -16,16 +16,18 @@ object GuildApp extends zio.App {
       .toLayer
 
   val program =
-    Sharding.registerEntity(Guild, behavior).use { guild =>
-      for {
-        user1 <- random.nextUUID.map(_.toString)
-        user2 <- random.nextUUID.map(_.toString)
-        user3 <- random.nextUUID.map(_.toString)
-        _     <- guild.send("guild1")(Join(user1, _)).debug
-        _     <- guild.send("guild1")(Join(user2, _)).debug
-        _     <- guild.send("guild1")(Join(user3, _)).debug
-        _     <- ZIO.never
-      } yield ()
+    Sharding.registerEntity(Guild, behavior).use { _ =>
+      Sharding.messenger(Guild).map { guild =>
+        for {
+          user1 <- random.nextUUID.map(_.toString)
+          user2 <- random.nextUUID.map(_.toString)
+          user3 <- random.nextUUID.map(_.toString)
+          _     <- guild.send("guild1")(Join(user1, _)).debug
+          _     <- guild.send("guild1")(Join(user2, _)).debug
+          _     <- guild.send("guild1")(Join(user3, _)).debug
+          _     <- ZIO.never
+        } yield ()
+      }
     }
 
   val clock    = Clock.live
@@ -33,9 +35,10 @@ object GuildApp extends zio.App {
   val pods     = ZLayer.succeed(GrpcConfig.default) ++ logging >>> GrpcPods.live
   val client   = config ++ logging >>> ShardManagerClient.liveWithSttp
   val storage  = ZLayer.succeed(RedisConfig.default) ++ redis >>> StorageRedis.live
-  val sharding = pods ++ client ++ storage ++ config ++ clock ++ Random.live ++ logging >>> Sharding.live
+  val sharding =
+    pods ++ client ++ storage ++ config ++ clock ++ Random.live ++ logging ++ KryoSerialization.live >+> Sharding.live
   val service  = config ++ sharding ++ clock >+> GrpcShardingService.live
-  val layer    = sharding ++ service ++ KryoSerialization.live ++ clock ++ Random.live ++ redis
+  val layer    = sharding ++ service ++ redis
 
   def run(args: List[String]): URIO[ZEnv, ExitCode] =
     Sharding.registerManaged.use(_ => program).provideLayer(layer).exitCode
