@@ -165,8 +165,10 @@ def behavior(entityId: String, messages: Dequeue[GuildMessage]): RIO[Sharding, N
 ### Run the application
 
 To run our entities, we need to register their behavior to the Sharding system, which is done by calling `Sharding.registerEntity`, passing the entity type and the behavior.
+
 We then need to notify the Shard Manager that a new pod is now ready to run entities, and shards may be assigned to it.
 This is done by calling `Sharding.registerScoped` (which is the equivalent of calling `Sharding.register` when the program starts and `Sharding.unregister` when the program ends).
+
 To communicate with our entities, we need a `Messenger[GuildMessage]`, which we get by calling `Sharding.messenger`. You can even use `messenger` on a pod that is not hosting any entities.
 ```scala
   val program =
