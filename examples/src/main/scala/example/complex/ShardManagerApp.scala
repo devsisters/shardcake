@@ -8,14 +8,12 @@ import zio.console.Console
 
 object ShardManagerApp extends zio.App {
 
-  val clock   = Clock.live
-  val console = Console.live
-  val logging = Console.live >>> Logging.console
+  val logging = Logging.debug
   val pods    = ZLayer.succeed(GrpcConfig.default) ++ logging >>> GrpcPods.live    // use gRPC protocol
   val health  = pods >>> PodsHealth.local                                          // just ping a pod to see if it's alive
   val storage = ZLayer.succeed(RedisConfig.default) ++ redis >>> StorageRedis.live // store data in Redis
   val layer   =
-    ZLayer.succeed(ManagerConfig.default) ++ clock ++ console ++ logging ++ pods ++ health ++ storage >+>
+    ZLayer.succeed(ManagerConfig.default) ++ Clock.live ++ Console.live ++ logging ++ pods ++ health ++ storage >+>
       ShardManager.live // Shard Manager logic
 
   def run(args: List[String]): URIO[zio.ZEnv, ExitCode] =

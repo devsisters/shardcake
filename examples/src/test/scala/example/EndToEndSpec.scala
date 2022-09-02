@@ -67,8 +67,7 @@ object EndToEndSpec extends DefaultRunnableSpec {
   val redisConfig   = ZLayer.succeed(RedisConfig.default)
 
   val clock          = Clock.live
-  val console        = Console.live
-  val logging        = Console.live >>> Logging.console
+  val logging        = Logging.debug
   val pods           = grpcConfig ++ logging >>> GrpcPods.live
   val client         = config ++ logging >>> ShardManagerClient.liveWithSttp
   val redisContainer = Blocking.live >>> container >>> redis
@@ -77,7 +76,7 @@ object EndToEndSpec extends DefaultRunnableSpec {
   val service        = config ++ sharding ++ clock >+> GrpcShardingService.live
   val health         = pods >>> PodsHealth.local
   val manager        = health ++ pods ++ storage ++ managerConfig ++ logging ++ clock >>> ShardManager.live
-  val managerServer  = manager ++ managerConfig ++ clock ++ console >>> shardManagerServer
+  val managerServer  = manager ++ managerConfig ++ clock ++ Console.live >>> shardManagerServer
   val layer          = sharding ++ service ++ KryoSerialization.live ++ clock ++ Random.live ++ redisContainer ++ managerServer
 
   def spec =

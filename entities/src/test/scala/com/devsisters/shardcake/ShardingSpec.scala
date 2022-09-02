@@ -6,7 +6,6 @@ import com.devsisters.shardcake.Messenger.Replier
 import com.devsisters.shardcake.interfaces.{ Logging, Pods, Serialization, Storage }
 import zio._
 import zio.clock.Clock
-import zio.console.Console
 import zio.duration._
 import zio.random.Random
 import zio.test.TestAspect.sequential
@@ -16,8 +15,8 @@ import zio.test.environment.TestEnvironment
 object ShardingSpec extends DefaultRunnableSpec {
 
   private val layer =
-    (Clock.live ++ Random.live ++ Console.live ++ ZLayer.succeed(Config.default) >+>
-      ShardManagerClient.local ++ Logging.console ++ Pods.noop ++ Storage.memory >+>
+    (Clock.live ++ Random.live ++ ZLayer.succeed(Config.default) >+>
+      ShardManagerClient.local ++ Logging.debug ++ Pods.noop ++ Storage.memory >+>
       Sharding.live ++ Serialization.javaSerialization).mapError(TestFailure.fail)
 
   def spec: ZSpec[TestEnvironment, Throwable] =

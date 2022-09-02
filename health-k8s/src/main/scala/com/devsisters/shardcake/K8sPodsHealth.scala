@@ -30,7 +30,9 @@ object K8sPodsHealth {
                         .runHead
                         .map(_.isDefined)
                         .tap(ZIO.unless(_)(logger.logWarning(s"$podAddress is not found in k8s")))
-                        .catchAllCause(cause => logger.logErrorCause(s"Error communicating with k8s", cause).as(true))
+                        .catchAllCause(cause =>
+                          logger.logError(s"Error communicating with k8s ${cause.prettyPrint}").as(true)
+                        )
                     }
                   )
     } yield new PodsHealth {

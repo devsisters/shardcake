@@ -5,11 +5,10 @@ import com.devsisters.shardcake.ShardManager.{ PodWithMetadata, ShardManagerStat
 import com.devsisters.shardcake.interfaces.{ Logging, Pods, PodsHealth, Storage }
 import zio._
 import zio.clock.Clock
-import zio.console._
 import zio.duration._
 import zio.stream.ZStream
 import zio.test._
-import zio.test.environment.TestClock
+import zio.test.environment.{ TestClock, TestEnvironment }
 
 import java.time.OffsetDateTime
 
@@ -18,7 +17,7 @@ object ShardManagerSpec extends DefaultRunnableSpec {
   private val pod2 = PodWithMetadata(Pod(PodAddress("2", 2), "1.0.0"), OffsetDateTime.MIN)
   private val pod3 = PodWithMetadata(Pod(PodAddress("3", 3), "1.0.0"), OffsetDateTime.MIN)
 
-  override def spec =
+  override def spec: ZSpec[TestEnvironment, Any] =
     suite("ShardManagerSpec")(
       suite("Unit tests")(
         test("Rebalance unbalanced assignments") {
@@ -155,7 +154,7 @@ object ShardManagerSpec extends DefaultRunnableSpec {
             // check that all pods now have 12 shards each
             assert3      = assertTrue(assignments.groupBy(_._2).forall(_._2.size == 12))
 
-          } yield assert1 && assert2 && assert3).provideSomeLayer[TestClock with Clock with Console](shardManager)
+          } yield assert1 && assert2 && assert3).provideSomeLayer[TestClock with Clock](shardManager)
         },
         testM("Simulate scaling down scenario") {
           (for {
@@ -177,7 +176,7 @@ object ShardManagerSpec extends DefaultRunnableSpec {
                              assignments.groupBy(_._2).forall(_._2.size == 15)
                            )
 
-          } yield assert1 && assert2).provideSomeLayer[TestClock with Clock with Console](shardManager)
+          } yield assert1 && assert2).provideSomeLayer[TestClock with Clock](shardManager)
         }
       )
     )
@@ -198,10 +197,8 @@ object ShardManagerSpec extends DefaultRunnableSpec {
     def savePods(pods: Map[PodAddress, Pod]): Task[Unit]                             = ZIO.unit
   })
 
-  val shardManager: ZLayer[Console with Clock, Throwable, Has[ShardManager]] =
-    ZLayer.requires[Clock] ++
-      ZLayer.requires[Console] ++
-      Logging.console ++ config ++ storage ++ Pods.noop >+> PodsHealth.local >>> ShardManager.live
+  val shardManager: ZLayer[Clock, Throwable, Has[ShardManager]] =
+    ZLayer.requires[Clock] ++ Logging.debug ++ config ++ storage ++ Pods.noop >+> PodsHealth.local >>> ShardManager.live
 
   def simulate(events: List[SimulationEvent]): RIO[Has[ShardManager], Unit] =
     for {

@@ -2,11 +2,10 @@ package example.simple
 
 import com.devsisters.shardcake._
 import com.devsisters.shardcake.interfaces._
-import example.simple.GuildBehavior._
 import example.simple.GuildBehavior.GuildMessage.Join
+import example.simple.GuildBehavior._
 import zio._
 import zio.clock.Clock
-import zio.console.Console
 import zio.random.Random
 
 object GuildApp extends zio.App {
@@ -23,7 +22,7 @@ object GuildApp extends zio.App {
     }
 
   val clock    = Clock.live
-  val logging  = Console.live >>> Logging.console
+  val logging  = Logging.debug
   val config   = ZLayer.succeed(Config.default)
   val pods     = ZLayer.succeed(GrpcConfig.default) ++ logging >>> GrpcPods.live
   val client   = config ++ logging >>> ShardManagerClient.liveWithSttp

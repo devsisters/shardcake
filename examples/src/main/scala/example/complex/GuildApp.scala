@@ -6,7 +6,6 @@ import example.complex.GuildBehavior.GuildMessage.Join
 import example.complex.GuildBehavior._
 import zio._
 import zio.clock.Clock
-import zio.console.Console
 import zio.random.Random
 
 object GuildApp extends zio.App {
@@ -30,7 +29,7 @@ object GuildApp extends zio.App {
     }
 
   val clock    = Clock.live
-  val logging  = Console.live >>> Logging.console
+  val logging  = Logging.debug
   val pods     = ZLayer.succeed(GrpcConfig.default) ++ logging >>> GrpcPods.live
   val client   = config ++ logging >>> ShardManagerClient.liveWithSttp
   val storage  = ZLayer.succeed(RedisConfig.default) ++ redis >>> StorageRedis.live
