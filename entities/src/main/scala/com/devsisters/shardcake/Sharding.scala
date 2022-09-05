@@ -108,8 +108,8 @@ class Sharding private (
       pod     = shards.get(shardId)
     } yield pod.contains(address)
 
-  def getNumberOfPods: UIO[Int] =
-    shardAssignments.get.map(_.values.toSet.size)
+  def getPods: UIO[Set[PodAddress]] =
+    shardAssignments.get.map(_.values.toSet)
 
   private[shardcake] val refreshAssignments: ZManaged[Clock, Nothing, Unit] = {
     val assignmentStream =
@@ -387,8 +387,8 @@ object Sharding {
     ZIO.service[Sharding].map(_.messenger(entityType))
 
   /**
-   * Get the number of pods currently registered to the Shard Manager
+   * Get the list of pods currently registered to the Shard Manager
    */
-  def getNumberOfPods: RIO[Has[Sharding], Int] =
-    ZIO.serviceWith[Sharding](_.getNumberOfPods)
+  def getPods: RIO[Has[Sharding], Set[PodAddress]] =
+    ZIO.serviceWith[Sharding](_.getPods)
 }
