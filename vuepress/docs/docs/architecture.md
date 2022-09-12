@@ -15,7 +15,7 @@ When the Shard Manager **assigns** or **unassigns** shards to/from pods, it noti
 it checks which shard this entity belongs to and redirects the message to the pod in charge of that shard.
 That pod will then start the entity behavior locally if it was not already started.
 - The **Shard ID** assigned to an entity is calculated as follows:
-`shardId = abs(entityId.hashCode) % numberOfShards + 1`. In other words, it is a stable number between 1 and the number of shards.
+`shardId = abs(entityId.hashCode % numberOfShards) + 1`. In other words, it is a stable number between 1 and the number of shards.
 - When a pod is **unresponsive**, other pods will notify the Shard Manager, who will check with the Health API if the pod is still alive.
 It will then unassign shards from this pod only if the pod is not alive
 (as long as it’s alive, we can’t reassign its shards because it might cause an entity to be alive in 2 different pods).
