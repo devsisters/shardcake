@@ -58,7 +58,8 @@ There might be millions of entities, so instead of keeping millions of entities-
 
 Shardcake is composed of 2 main components:
 - The **Shard Manager** is a independent component that needs a single instance running. It is in charge of assigning shards to pods.
-- **Entities** will run on your application servers and process messages that are sent to them.
+- **Entities** will run on your application servers and process messages that are sent to them. Note that the entity behavior (including entity persistence) is entirely up to you.
+Shardcake only takes care of starting entities on the right pods as well as the communication between them.
 
 There are 4 pluggable parts that can be implemented with the technology of your choice.
 - The `Storage` trait defines where shard assignments will be stored. Shardcake provides an implementation using **Redis**.

@@ -109,6 +109,14 @@ libraryDependencies += "com.devsisters" %% "shardcake-serialization-kryo" % "2.0
 ```
 You can then simply use the `KryoSerialization.live` layer.
 
+::: tip Server updates and message versioning
+- Messages are not persisted, which means that if you stop and restart the whole system, you can change anything in the messages format.
+- On the other hand, if you wish to do rolling updates (update servers progressively without downtime), you need to be careful with changes in the messages format.
+- What you can do largely depends on your serialization mechanism, some solutions allow changes while some others are very restrictive.
+  [Kryo](https://github.com/EsotericSoftware/kryo) by default is pretty strict and won't support most changes, but there are settings to support more (at the cost of some performance or message size).
+- When you can't modify existing messages, an option is to create new messages that won't be used until the rolling update is finished (so you won't have cases where old nodes receive new messages).
+:::
+
 ## Health
 
 The `PodsHealth` trait defines how to know if a pod is still alive or is dead (in which case, we should reassign all its shards).
