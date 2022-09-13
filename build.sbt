@@ -173,14 +173,7 @@ lazy val examples = project
   .dependsOn(manager, storageRedis, grpcProtocol, serializationKryo)
 
 lazy val protobuf = Seq(
-  PB.protocVersion    := "3.19.2",
-  PB.protocExecutable := (
-    // For M1 silicon
-    if (protocbridge.SystemDetector.detectedClassifier() == "osx-aarch_64")
-      file("/opt/homebrew/bin/protoc")
-    else
-      PB.protocExecutable.value
-  )
+  PB.protocVersion := "3.19.2"
 ) ++ Project.inConfig(Test)(sbtprotoc.ProtocPlugin.protobufConfigSettings)
 
 lazy val commonSettings = Def.settings(
