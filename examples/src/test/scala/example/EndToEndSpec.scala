@@ -28,8 +28,9 @@ import scala.util.Try
 
 object EndToEndSpec extends DefaultRunnableSpec {
 
-  val shardManagerServer
-    : ZLayer[Has[ShardManager] with Has[ManagerConfig] with Clock with Console, Throwable, Has[Unit]] =
+  val shardManagerServer: ZLayer[Has[ShardManager] with Has[ManagerConfig] with Has[
+    Logging
+  ] with Clock with Console, Throwable, Has[Unit]] =
     (Server.run.forkDaemon *> Clock.Service.live.sleep(3 seconds).unit).toLayer
 
   val container: ZLayer[Blocking, Nothing, Has[GenericContainer]] =
@@ -77,7 +78,7 @@ object EndToEndSpec extends DefaultRunnableSpec {
   val service        = config ++ sharding ++ clock >+> GrpcShardingService.live
   val health         = pods >>> PodsHealth.local
   val manager        = health ++ pods ++ storage ++ managerConfig ++ logging ++ clock >>> ShardManager.live
-  val managerServer  = manager ++ managerConfig ++ clock ++ Console.live >>> shardManagerServer
+  val managerServer  = manager ++ managerConfig ++ logging ++ clock ++ Console.live >>> shardManagerServer
   val layer          = sharding ++ service ++ redisContainer ++ managerServer
 
   def spec =
