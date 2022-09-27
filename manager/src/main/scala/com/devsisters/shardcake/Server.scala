@@ -28,7 +28,7 @@ object Server {
                      } @@ cors())
       nothing     <- server.make
                        .use(start =>
-                         logger.logInfo(s"Server started on port ${start.port}")
+                         logger.logInfo(s"Server Manager started on port ${start.port}")
                            *> ZIO.never
                        )
                        .provideSomeLayer[Console with Has[ShardManager] with Clock](

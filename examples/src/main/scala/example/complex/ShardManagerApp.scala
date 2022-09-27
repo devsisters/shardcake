@@ -17,13 +17,5 @@ object ShardManagerApp extends zio.App {
       ShardManager.live // Shard Manager logic
 
   def run(args: List[String]): URIO[zio.ZEnv, ExitCode] =
-    Server.run
-      .provideLayer(layer)
-      .catchAllCause(cause =>
-        ZIO
-          .when(!cause.interrupted)(
-            Console.Service.live.putStrErr(s"Shard cake failed, because of ${cause.prettyPrint}").as(ExitCode.failure)
-          )
-      )
-      .exitCode
+    Server.run.provideLayer(layer).exitCode
 }
