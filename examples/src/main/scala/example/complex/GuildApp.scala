@@ -17,7 +17,7 @@ object GuildApp extends zio.App {
 
   val program =
     (Sharding.registerEntity(Guild, behavior) *> Sharding.registerManaged).use { _ =>
-      Sharding.messenger(Guild).map { guild =>
+      Sharding.messenger(Guild).flatMap { guild =>
         for {
           user1 <- random.nextUUID.map(_.toString)
           user2 <- random.nextUUID.map(_.toString)

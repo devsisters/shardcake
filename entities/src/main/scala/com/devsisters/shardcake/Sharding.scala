@@ -264,18 +264,18 @@ class Sharding private (
                            serialization
                              .decode[Req](msg.body)
                              .map(req => Some((req, msg.entityId, p, msg.replyId)))
-                             .catchAll(p.fail(_).as(None))
+                             .catchAllCause((cause: Cause[Throwable]) => p.fail(cause.squash).as(None))
                          }
                          .collectSome
                          .foreach { case (msg, entityId, p, replyId) =>
                            Promise
                              .make[Throwable, Option[Any]]
                              .flatMap(p2 =>
-                               entityManager.send(entityId, msg, replyId, p2).catchAll(p.fail) *>
-                                 p2.await.flatMap(
-                                   ZIO.foreach(_)(serialization.encode).flatMap(p.succeed(_)).catchAll(p.fail(_)).fork
-                                 )
+                               entityManager.send(entityId, msg, replyId, p2) *>
+                                 p2.await
+                                   .flatMap(ZIO.foreach(_)(serialization.encode).flatMap(p.succeed(_)).catchAll(p.fail(_)).fork)
                              )
+                             .catchAllCause((cause: Cause[Throwable]) => p.fail(cause.squash).unit)
                          }
                          .forkManaged
     } yield ()

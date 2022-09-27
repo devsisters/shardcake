@@ -11,7 +11,7 @@ object ShardManagerApp extends zio.App {
   val logging = Logging.debug
   val pods    = ZLayer.succeed(GrpcConfig.default) ++ logging >>> GrpcPods.live // use gRPC protocol
   val health  = pods >>> PodsHealth.local                                       // just ping a pod to see if it's alive
-  val storage = Storage.memory                                                  // / store data in memory
+  val storage = Storage.memory                                                  // store data in memory
   val layer   =
     ZLayer.succeed(ManagerConfig.default) ++ Clock.live ++ Console.live ++ logging ++ pods ++ health ++ storage >+>
       ShardManager.live // Shard Manager logic
