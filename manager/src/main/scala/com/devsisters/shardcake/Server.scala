@@ -25,7 +25,7 @@ object Server {
       nothing     <- ZIO
                        .scoped(
                          server.make
-                           .flatMap(start => ZIO.logInfo(s"Shard cake server started on port ${start.port}.") *> ZIO.never)
+                           .flatMap(start => ZIO.logInfo(s"Shard Manager server started on port ${start.port}.") *> ZIO.never)
                            .provideSomeLayer[ShardManager with Scope](EventLoopGroup.auto(0) ++ ServerChannelFactory.auto)
                        )
                        .forever
