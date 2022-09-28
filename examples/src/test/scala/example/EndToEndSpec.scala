@@ -80,7 +80,7 @@ object EndToEndSpec extends ZIOSpecDefault {
             _       <- Sharding.registerScoped
             guild   <- Sharding.messenger(Guild)
             _       <- guild.send("guild1")(Join("user1", _))
-            timeout <- guild.send("guild1")(Timeout).exit
+            timeout <- guild.send("guild1")(Timeout(_)).exit
             _       <- guild.send("guild1")(Join("user2", _))
             _       <- guild.send("guild1")(Join("user3", _))
             _       <- guild.send("guild1")(Join("user4", _))
