@@ -62,7 +62,13 @@ object EndToEndSpec extends DefaultRunnableSpec {
       .toLayerMany
   }
 
-  val config        = ZLayer.succeed(Config.default.copy(shardManagerUri = uri"http://localhost:8087/api/graphql"))
+  val config        = ZLayer.succeed(
+    Config.default.copy(
+      shardManagerUri = uri"http://localhost:8087/api/graphql",
+      simulateRemotePods = true,
+      sendTimeout = 3 seconds
+    )
+  )
   val grpcConfig    = ZLayer.succeed(GrpcConfig.default)
   val managerConfig = ZLayer.succeed(ManagerConfig.default.copy(apiPort = 8087))
   val redisConfig   = ZLayer.succeed(RedisConfig.default)
