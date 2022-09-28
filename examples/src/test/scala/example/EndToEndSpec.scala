@@ -1,26 +1,26 @@
 package example
 
-import com.devsisters.shardcake.StorageRedis.{ fs2Stream, Redis }
+import scala.util.Try
+
 import com.devsisters.shardcake._
+import com.devsisters.shardcake.StorageRedis.Redis
 import com.devsisters.shardcake.interfaces.PodsHealth
 import com.dimafeng.testcontainers.GenericContainer
 import dev.profunktor.redis4cats.connection.RedisClient
 import dev.profunktor.redis4cats.data.RedisCodec
 import dev.profunktor.redis4cats.effect.Log
-import dev.profunktor.redis4cats.pubsub.{ PubSub, PubSubCommands }
-import dev.profunktor.redis4cats.{ Redis, RedisCommands }
+import dev.profunktor.redis4cats.pubsub.PubSub
+import dev.profunktor.redis4cats.Redis
 import example.simple.GuildBehavior
 import example.simple.GuildBehavior.Guild
-import example.simple.GuildBehavior.GuildMessage.Join
+import example.simple.GuildBehavior.GuildMessage.{ Join, Timeout }
 import sttp.client3.UriContext
-import zio.Clock.ClockLive
 import zio._
+import zio.Clock.ClockLive
 import zio.interop.catz._
-import zio.test.Assertion._
-import zio.test.TestAspect.sequential
 import zio.test._
-
-import scala.util.Try
+import zio.test.Assertion._
+import zio.test.TestAspect.{ sequential, withLiveClock }
 
 object EndToEndSpec extends ZIOSpecDefault {
 
@@ -60,7 +60,13 @@ object EndToEndSpec extends ZIOSpecDefault {
         )
     }
 
-  private val config        = ZLayer.succeed(Config.default.copy(shardManagerUri = uri"http://localhost:8087/api/graphql"))
+  private val config        = ZLayer.succeed(
+    Config.default.copy(
+      shardManagerUri = uri"http://localhost:8087/api/graphql",
+      simulateRemotePods = true,
+      sendTimeout = 3 seconds
+    )
+  )
   private val grpcConfig    = ZLayer.succeed(GrpcConfig.default)
   private val managerConfig = ZLayer.succeed(ManagerConfig.default.copy(apiPort = 8087))
   private val redisConfig   = ZLayer.succeed(RedisConfig.default)
@@ -74,12 +80,15 @@ object EndToEndSpec extends ZIOSpecDefault {
             _       <- Sharding.registerScoped
             guild   <- Sharding.messenger(Guild)
             _       <- guild.send("guild1")(Join("user1", _))
+            timeout <- guild.send("guild1")(Timeout(_)).exit
             _       <- guild.send("guild1")(Join("user2", _))
             _       <- guild.send("guild1")(Join("user3", _))
             _       <- guild.send("guild1")(Join("user4", _))
             members <- guild.send[Try[Set[String]]]("guild1")(Join("user5", _))
             failure <- guild.send[Try[Set[String]]]("guild1")(Join("user6", _))
-          } yield assert(members)(isSuccess(hasSize(equalTo(5)))) && assertTrue(failure.isFailure)
+          } yield assert(members)(isSuccess(hasSize(equalTo(5)))) &&
+            assertTrue(failure.isFailure) &&
+            assertTrue(timeout.toTry.isFailure)
         }
       }
     ).provideShared(
@@ -98,5 +107,5 @@ object EndToEndSpec extends ZIOSpecDefault {
       grpcConfig,
       managerConfig,
       redisConfig
-    ) @@ sequential
+    ) @@ sequential @@ withLiveClock
 }
