@@ -194,8 +194,15 @@ class Sharding private (
             pod       = shards.get(shardId)
             response <- pod match {
                           case Some(pod) =>
-                            val send =
-                              if (pod == address) {
+                            val send = {
+                              if (config.simulateRemotePods && pod == address) {
+                                serialization
+                                  .encode(msg)
+                                  .flatMap(bytes =>
+                                    sendToLocalEntity(BinaryMessage(entityId, entityType.name, bytes, replyId))
+                                      .flatMap(ZIO.foreach(_)(serialization.decode[Res]))
+                                  )
+                              } else if (pod == address) {
                                 // if pod = self, shortcut and send directly without serialization
                                 Promise
                                   .make[Throwable, Option[Any]]
@@ -236,6 +243,7 @@ class Sharding private (
                                       .flatMap(ZIO.foreach(_)(serialization.decode[Res]))
                                   )
                               }
+                            }
                             send.catchSome { case _: EntityNotManagedByThisPod | _: PodUnavailable =>
                               clock.sleep(200.millis) *> trySend
                             }

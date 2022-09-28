@@ -1,7 +1,9 @@
 package example
 
-import com.devsisters.shardcake.StorageRedis.Redis
+import scala.util.Try
+
 import com.devsisters.shardcake._
+import com.devsisters.shardcake.StorageRedis.Redis
 import com.devsisters.shardcake.interfaces.{ Logging, PodsHealth }
 import com.dimafeng.testcontainers.GenericContainer
 import dev.profunktor.redis4cats.Redis
@@ -11,7 +13,7 @@ import dev.profunktor.redis4cats.effect.Log
 import dev.profunktor.redis4cats.pubsub.PubSub
 import example.simple.GuildBehavior
 import example.simple.GuildBehavior.Guild
-import example.simple.GuildBehavior.GuildMessage.Join
+import example.simple.GuildBehavior.GuildMessage.{ Join, Timeout }
 import sttp.client3.UriContext
 import zio._
 import zio.blocking.Blocking
@@ -20,11 +22,9 @@ import zio.console.Console
 import zio.duration._
 import zio.interop.catz._
 import zio.random.Random
+import zio.test._
 import zio.test.Assertion._
 import zio.test.TestAspect.sequential
-import zio.test._
-
-import scala.util.Try
 
 object EndToEndSpec extends DefaultRunnableSpec {
 
@@ -88,12 +88,15 @@ object EndToEndSpec extends DefaultRunnableSpec {
           for {
             guild   <- Sharding.messenger(Guild)
             _       <- guild.send("guild1")(Join("user1", _))
+            timeout <- guild.send("guild1")(Timeout(_)).run
             _       <- guild.send("guild1")(Join("user2", _))
             _       <- guild.send("guild1")(Join("user3", _))
             _       <- guild.send("guild1")(Join("user4", _))
             members <- guild.send[Try[Set[String]]]("guild1")(Join("user5", _))
             failure <- guild.send[Try[Set[String]]]("guild1")(Join("user6", _))
-          } yield assert(members)(isSuccess(hasSize(equalTo(5)))) && assertTrue(failure.isFailure)
+          } yield assert(members)(isSuccess(hasSize(equalTo(5)))) &&
+            assertTrue(failure.isFailure) &&
+            assertTrue(timeout.toEither.toTry.isFailure)
         }
       }
     ).provideLayerShared(layer.mapError(TestFailure.fail)) @@ sequential

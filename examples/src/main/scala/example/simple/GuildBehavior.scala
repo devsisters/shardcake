@@ -2,8 +2,7 @@ package example.simple
 
 import com.devsisters.shardcake.Messenger.Replier
 import com.devsisters.shardcake.{ EntityType, Sharding }
-import zio.{ Dequeue, Has, RIO, Ref }
-
+import zio.{ Dequeue, Has, RIO, Ref, ZIO }
 import scala.util.{ Failure, Success, Try }
 
 object GuildBehavior {
@@ -11,6 +10,7 @@ object GuildBehavior {
 
   object GuildMessage {
     case class Join(userId: String, replier: Replier[Try[Set[String]]]) extends GuildMessage
+    case class Timeout(replier: Replier[Try[Set[String]]])              extends GuildMessage
     case class Leave(userId: String)                                    extends GuildMessage
   }
 
@@ -34,5 +34,7 @@ object GuildBehavior {
         )
       case GuildMessage.Leave(userId)         =>
         state.update(_ - userId)
+      case GuildMessage.Timeout(_)            =>
+        ZIO.unit // simulate a timeout by not responding
     }
 }
