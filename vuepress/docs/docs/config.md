@@ -28,6 +28,7 @@ This `serverVersion` allows the Shard Manager to know which pods are old and whi
 - `sendTimeout`: timeout when calling `sendMessage`
 - `refreshAssignmentsRetryInterval`: retry interval in case of failure getting shard assignments from storage
 - `unhealthyPodReportInterval`: interval to report unhealthy pods to the Shard Manager (this exists to prevent calling the Shard Manager for each failed message)
+- `simulateRemotePods`: disable optimizations when sending a message to an entity hosted on the local shards (this will force serialization of all messages)
 
 ## Shard Manager Configuration
 
