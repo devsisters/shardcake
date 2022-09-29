@@ -43,7 +43,8 @@ class Sharding private (
       shardManager.register(address)
 
   val unregister: Task[Unit] =
-    logger.logDebug(s"Stopping local entities") *>
+    shardManager.getAssignments *> // ping the shard manager first to stop if it's not available
+      logger.logDebug(s"Stopping local entities") *>
       isShuttingDownRef.set(true) *>
       entityStates.get.flatMap(states => ZIO.foreach_(states.values)(_.entityManager.terminateAllEntities)) *>
       logger.logDebug(s"Unregistering pod $address to Shard Manager") *>
@@ -111,6 +112,22 @@ class Sharding private (
   def getPods: UIO[Set[PodAddress]] =
     shardAssignments.get.map(_.values.toSet)
 
+  private def updateAssignments(
+    assignmentsOpt: Map[ShardId, Option[PodAddress]],
+    fromShardManager: Boolean
+  ): UIO[Unit] = {
+    val assignments = assignmentsOpt.flatMap { case (k, v) => v.map(k -> _) }
+    logger.logDebug("Received new shard assignments") *>
+      (if (fromShardManager) shardAssignments.update(map => if (map.isEmpty) assignments else map)
+       else
+         shardAssignments.update(map =>
+           // we keep self assignments (we don't override them with the new assignments
+           // because only the Shard Manager is able to change assignments of the current node, via assign/unassign
+           assignments.filter { case (_, pod) => pod != address } ++
+             map.filter { case (_, pod) => pod == address }
+         ))
+  }
+
   private[shardcake] val refreshAssignments: ZManaged[Clock, Nothing, Unit] = {
     val assignmentStream =
       ZStream.fromEffect(
@@ -118,16 +135,7 @@ class Sharding private (
       ) ++
         storage.assignmentsStream.map(_ -> false) // then, get assignments changes from Redis
     assignmentStream.mapM { case (assignmentsOpt, fromShardManager) =>
-      val assignments = assignmentsOpt.flatMap { case (k, v) => v.map(k -> _) }
-      logger.logDebug("Received new shard assignments") *>
-        (if (fromShardManager) shardAssignments.update(map => if (map.isEmpty) assignments else map)
-         else
-           shardAssignments.update(map =>
-             // we keep self assignments (we don't override them with the new assignments
-             // because only the Shard Manager is able to change assignments of the current node, via assign/unassign
-             assignments.filter { case (_, pod) => pod != address } ++
-               map.filter { case (_, pod) => pod == address }
-           ))
+      updateAssignments(assignmentsOpt, fromShardManager)
     }.runDrain
   }.retry(Schedule.fixed(config.refreshAssignmentsRetryInterval))
     .interruptible
@@ -237,7 +245,12 @@ class Sharding private (
                                               )
                                               .map(_ isEqual cdt)
                                           )
-                                          ZIO.whenM(notify)(shardManager.notifyUnhealthyPod(pod).forkDaemon)
+                                          ZIO.whenM(notify)(
+                                            (shardManager.notifyUnhealthyPod(pod) *>
+                                              // just in case we missed the update from the pubsub, refresh assignments
+                                              shardManager.getAssignments
+                                                .flatMap(updateAssignments(_, fromShardManager = true))).forkDaemon
+                                          )
                                         }
                                       }
                                       .flatMap(ZIO.foreach(_)(serialization.decode[Res]))
