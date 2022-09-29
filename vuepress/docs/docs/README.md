@@ -128,9 +128,9 @@ object Guild extends EntityType[GuildMessage]("guild")
 
 The behavior itself is a function with the following signature:
 ```scala
-def behavior(entityId: String, messages: Dequeue[Message]): RIO[Env, Nothing]
+def behavior(entityId: String, messages: Dequeue[GuildMessage]): RIO[Sharding, Nothing]
 ```
-It takes an `entityId` and a `Dequeue[Message]` (a queue of `Message` that you can only consume) and returns a `ZIO` that never ends (hence the return type `Nothing`).
+It takes an `entityId` and a `Dequeue[GuildMessage]` (a queue of `GuildMessage` that you can only consume) and returns a `ZIO` that never ends (hence the return type `Nothing`).
 That function is just supposed to consume `messages` forever.
 
 Let's first define how to handle a single `GuildMessage`.
