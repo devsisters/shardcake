@@ -275,22 +275,19 @@ class Sharding private (
       _             <- ZStream
                          .fromQueue(binaryQueue)
                          .mapZIO { case (msg, p) =>
-                           serialization
-                             .decode[Req](msg.body)
-                             .map(req => Some((req, msg.entityId, p, msg.replyId)))
-                             .catchAllCause((cause: Cause[Throwable]) => p.fail(cause.squash).as(None))
+                           (for {
+                             req       <- serialization.decode[Req](msg.body)
+                             p2        <- Promise.make[Throwable, Option[Any]]
+                             _         <- entityManager.send(msg.entityId, req, msg.replyId, p2)
+                             resOption <- p2.await
+                             res       <- ZIO.foreach(resOption)(serialization.encode)
+                             _         <- p.succeed(res)
+                           } yield ())
+                             .catchAllCause((cause: Cause[Throwable]) => p.fail(cause.squash))
+                             .fork
+                             .unit
                          }
-                         .collectSome
-                         .runForeach { case (msg, entityId, p, replyId) =>
-                           Promise
-                             .make[Throwable, Option[Any]]
-                             .flatMap(p2 =>
-                               entityManager.send(entityId, msg, replyId, p2) *>
-                                 p2.await
-                                   .flatMap(ZIO.foreach(_)(serialization.encode).flatMap(p.succeed(_)).catchAll(p.fail(_)).fork)
-                             )
-                             .catchAllCause((cause: Cause[Throwable]) => p.fail(cause.squash).unit)
-                         }
+                         .runDrain
                          .forkScoped
     } yield ()
 }
