@@ -2,7 +2,7 @@ package example.complex
 
 import com.devsisters.shardcake._
 import com.devsisters.shardcake.interfaces.Logging
-import example.complex.GuildBehavior.GuildMessage.Join
+import example.complex.GuildBehavior.GuildMessage.{ Join, Terminate }
 import example.complex.GuildBehavior._
 import zio._
 import zio.clock.Clock
@@ -16,7 +16,7 @@ object GuildApp extends zio.App {
       .toLayer
 
   val program =
-    (Sharding.registerEntity(Guild, behavior) *> Sharding.registerManaged).use { _ =>
+    (Sharding.registerEntity(Guild, behavior, p => Some(Terminate(p))) *> Sharding.registerManaged).use { _ =>
       Sharding.messenger(Guild).flatMap { guild =>
         for {
           user1 <- random.nextUUID.map(_.toString)
