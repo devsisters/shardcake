@@ -3,7 +3,7 @@ package example.complex
 import com.devsisters.shardcake.Messenger.Replier
 import com.devsisters.shardcake.{ EntityType, Sharding }
 import dev.profunktor.redis4cats.RedisCommands
-import zio.{ Dequeue, RIO, Task, ZIO }
+import zio.{ Dequeue, Promise, RIO, Task, ZIO }
 
 import scala.util.{ Failure, Success, Try }
 
@@ -13,6 +13,7 @@ object GuildBehavior {
   object GuildMessage {
     case class Join(userId: String, replier: Replier[Try[Set[String]]]) extends GuildMessage
     case class Leave(userId: String)                                    extends GuildMessage
+    case class Terminate(p: Promise[Nothing, Unit])                     extends GuildMessage
   }
 
   object Guild extends EntityType[GuildMessage]("guild")
@@ -45,5 +46,7 @@ object GuildBehavior {
           )
       case GuildMessage.Leave(userId)         =>
         redis.lRem(entityId, 1, userId).unit
+      case GuildMessage.Terminate(p)          =>
+        p.succeed(()) *> ZIO.interrupt
     }
 }

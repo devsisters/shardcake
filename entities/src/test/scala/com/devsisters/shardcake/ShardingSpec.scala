@@ -28,6 +28,18 @@ object ShardingSpec extends ZIOSpecDefault {
           } yield assertTrue(c1 == 2) && assertTrue(c2 == 1)
         }
       },
+      test("Entity termination") {
+        ZIO.scoped {
+          for {
+            _       <- Sharding.registerEntity(Counter, behavior)
+            _       <- Sharding.registerScoped
+            counter <- Sharding.messenger(Counter)
+            _       <- counter.send("c3")(GetCounter.apply)
+            _       <- Clock.sleep(3 seconds)
+            c       <- counter.send("c3")(GetCounter.apply)
+          } yield assertTrue(c == 0)
+        }
+      },
       test("Cluster singleton") {
         ZIO.scoped {
           for {

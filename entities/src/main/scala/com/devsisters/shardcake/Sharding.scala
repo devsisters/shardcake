@@ -34,6 +34,7 @@ class Sharding private (
 
   val register: Task[Unit] =
     ZIO.logDebug(s"Registering pod $address to Shard Manager") *>
+      isShuttingDownRef.set(false) *>
       shardManager.register(address)
 
   val unregister: Task[Unit] =

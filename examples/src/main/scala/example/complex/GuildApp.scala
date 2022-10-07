@@ -3,7 +3,7 @@ package example.complex
 import com.devsisters.shardcake._
 import com.devsisters.shardcake.interfaces.Serialization
 import dev.profunktor.redis4cats.RedisCommands
-import example.complex.GuildBehavior.GuildMessage.Join
+import example.complex.GuildBehavior.GuildMessage.{ Join, Terminate }
 import example.complex.GuildBehavior._
 import zio._
 
@@ -17,7 +17,7 @@ object GuildApp extends ZIOAppDefault {
 
   val program: ZIO[Sharding with Scope with Serialization with RedisCommands[Task, String, String], Throwable, Unit] =
     for {
-      _     <- Sharding.registerEntity(Guild, behavior)
+      _     <- Sharding.registerEntity(Guild, behavior, p => Some(Terminate(p)))
       _     <- Sharding.registerScoped
       guild <- Sharding.messenger(Guild)
       user1 <- Random.nextUUID.map(_.toString)

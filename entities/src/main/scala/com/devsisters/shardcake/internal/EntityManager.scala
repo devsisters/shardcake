@@ -50,11 +50,17 @@ private[shardcake] object EntityManager {
       entities.updateZIO(map =>
         map.get(entityId) match {
           case Some((Some(queue), interruptionFiber)) =>
-            // if a queue is found, offer the termination message, and set the queue to None so that no new message is enqueued
             Promise
               .make[Nothing, Unit]
-              .flatMap(p => ZIO.foreach(terminateMessage(p))(queue.offer).exit)
-              .as(map.updated(entityId, (None, interruptionFiber)))
+              .flatMap { p =>
+                terminateMessage(p) match {
+                  case Some(msg) =>
+                    // if a queue is found, offer the termination message, and set the queue to None so that no new message is enqueued
+                    queue.offer(msg).exit.as(map.updated(entityId, (None, interruptionFiber)))
+                  case None      =>
+                    queue.shutdown.as(map - entityId)
+                }
+              }
           case _                                      =>
             // if no queue is found, do nothing
             ZIO.succeed(map)
@@ -139,7 +145,7 @@ private[shardcake] object EntityManager {
                             case Some(queue) =>
                               terminateMessage(p) match {
                                 case Some(terminate) => queue.offer(terminate).catchAllCause(_ => p.succeed(()))
-                                case None            => p.succeed(())
+                                case None            => queue.shutdown *> p.succeed(())
                               }
                             case None        => p.succeed(())
                           }
