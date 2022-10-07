@@ -41,7 +41,7 @@ object ShardingSpec extends DefaultRunnableSpec {
           for {
             counter <- Sharding.messenger(Counter)
             _       <- counter.send("c1")(GetCounter.apply)
-            _       <- clock.sleep(3 seconds)
+            _       <- clock.sleep(5 seconds)
             c       <- counter.send("c1")(GetCounter.apply)
           } yield assertTrue(c == 0)
         }
