@@ -24,6 +24,14 @@ Ideally, we want to move each shard only once during the whole process.
 This `serverVersion` allows the Shard Manager to know which pods are old and which are new. It will then pick the new pods to assign shards.
 :::
 - `entityMaxIdleTime`: time of inactivity (without receiving any message) after which an entity will be stopped
+::: tip Termination Message
+`registerEntity` takes an optional parameter called `terminationMessage`. This allows defining a message that will be sent to your entities before they are stopped (either by a rebalance or because of inactivity).
+
+If no termination message is provided, the entity queues will simply be shutdown.
+But if you want to ensure entities are stopped "cleanly" after processing their last message, define a termination message and stop the behavior yourself (by calling `ZIO.interrupt`) after receiving that message.
+
+Termination messages must contain a promise which you need to complete to indicate that shutdown is complete. See the [example here](https://github.com/devsisters/shardcake/tree/series/2.x/examples/src/main/scala/example/complex).
+:::
 - `entityTerminationTimeout`: time we give to an entity to handle the termination message before interrupting it
 - `sendTimeout`: timeout when calling `sendMessage`
 - `refreshAssignmentsRetryInterval`: retry interval in case of failure getting shard assignments from storage
