@@ -15,7 +15,7 @@ import zio.test.environment.TestEnvironment
 object ShardingSpec extends DefaultRunnableSpec {
 
   private val layer =
-    (Clock.live ++ Random.live ++ ZLayer.succeed(Config.default) >+>
+    (Clock.live ++ Random.live ++ ZLayer.succeed(Config.default.copy(entityMaxIdleTime = 2 seconds)) >+>
       ShardManagerClient.local ++ Logging.debug ++ Pods.noop ++ Storage.memory ++ Serialization.javaSerialization >+>
       Sharding.live).mapError(TestFailure.fail)
 
@@ -34,6 +34,16 @@ object ShardingSpec extends DefaultRunnableSpec {
             c1      <- counter.send("c1")(GetCounter.apply)
             c2      <- counter.send("c2")(GetCounter.apply)
           } yield assertTrue(c1 == 2) && assertTrue(c2 == 1)
+        }
+      },
+      testM("Entity termination") {
+        (Sharding.registerEntity(Counter, behavior) *> Sharding.registerManaged).use { _ =>
+          for {
+            counter <- Sharding.messenger(Counter)
+            _       <- counter.send("c1")(GetCounter.apply)
+            _       <- clock.sleep(3 seconds)
+            c       <- counter.send("c1")(GetCounter.apply)
+          } yield assertTrue(c == 0)
         }
       },
       testM("Cluster singleton") {
