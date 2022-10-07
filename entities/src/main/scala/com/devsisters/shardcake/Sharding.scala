@@ -40,6 +40,7 @@ class Sharding private (
 
   val register: Task[Unit] =
     logger.logDebug(s"Registering pod $address to Shard Manager") *>
+      isShuttingDownRef.set(false) *>
       shardManager.register(address)
 
   val unregister: Task[Unit] =

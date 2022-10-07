@@ -40,9 +40,9 @@ object ShardingSpec extends DefaultRunnableSpec {
         (Sharding.registerEntity(Counter, behavior) *> Sharding.registerManaged).use { _ =>
           for {
             counter <- Sharding.messenger(Counter)
-            _       <- counter.send("c1")(GetCounter.apply)
-            _       <- clock.sleep(5 seconds)
-            c       <- counter.send("c1")(GetCounter.apply)
+            _       <- counter.send("c3")(GetCounter.apply)
+            _       <- clock.sleep(3 seconds)
+            c       <- counter.send("c3")(GetCounter.apply)
           } yield assertTrue(c == 0)
         }
       },
