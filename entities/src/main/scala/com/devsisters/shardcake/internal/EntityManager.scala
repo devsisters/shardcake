@@ -20,7 +20,8 @@ private[shardcake] object EntityManager {
     behavior: (String, Queue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req],
     sharding: Sharding,
-    config: Config
+    config: Config,
+    isTopic: Boolean
   ): URIO[R, EntityManager[Req]] =
     for {
       entities <- Ref.Synchronized.make[Map[String, (Option[Queue[Req]], Fiber[Nothing, Unit])]](Map())
@@ -30,7 +31,8 @@ private[shardcake] object EntityManager {
       terminateMessage,
       entities,
       sharding,
-      config
+      config,
+      isTopic
     )
 
   class EntityManagerLive[Req](
@@ -38,7 +40,8 @@ private[shardcake] object EntityManager {
     terminateMessage: Promise[Nothing, Unit] => Option[Req],
     entities: Ref.Synchronized[Map[String, (Option[Queue[Req]], Fiber[Nothing, Unit])]],
     sharding: Sharding,
-    config: Config
+    config: Config,
+    isTopic: Boolean
   ) extends EntityManager[Req] {
     private def startExpirationFiber(entityId: String): UIO[Fiber[Nothing, Unit]] =
       (for {
@@ -75,7 +78,9 @@ private[shardcake] object EntityManager {
     ): IO[EntityNotManagedByThisPod, Unit] =
       for {
         // first, verify that this entity should be handled by this pod
-        _     <- ZIO.unlessZIO(sharding.isEntityOnLocalShards(entityId))(ZIO.fail(EntityNotManagedByThisPod(entityId)))
+        _     <- ZIO.unless(isTopic)(
+                   ZIO.unlessZIO(sharding.isEntityOnLocalShards(entityId))(ZIO.fail(EntityNotManagedByThisPod(entityId)))
+                 )
         // find the queue for that entity, or create it if needed
         queue <- entities.modifyZIO(map =>
                    map.get(entityId) match {

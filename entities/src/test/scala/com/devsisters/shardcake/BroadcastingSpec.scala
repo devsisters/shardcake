@@ -22,7 +22,7 @@ object BroadcastingSpec extends ZIOSpecDefault {
         ZIO.scoped {
           for {
             _           <- Sharding.registerEntity(Counter, behavior)
-            _           <- Sharding.registerEntity(IncrementerActor.Incrementer, IncrementerActor.behavior)
+            _           <- Sharding.registerEntity(IncrementerActor.Incrementer, IncrementerActor.behavior, isTopic = true)
             _           <- Sharding.registerScoped
             counter     <- Sharding.messenger(Counter)
             incrementer <- Sharding.broadcaster(IncrementerActor.Incrementer)

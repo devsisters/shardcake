@@ -289,10 +289,11 @@ class Sharding private (
   def registerEntity[R, Req: Tag](
     entityType: EntityType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
-    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
+    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
+    isTopic: Boolean = false
   ): URIO[Scope with R, Unit] =
     for {
-      entityManager <- EntityManager.make(behavior, terminateMessage, self, config)
+      entityManager <- EntityManager.make(behavior, terminateMessage, self, config, isTopic)
       binaryQueue   <- Queue.unbounded[(BinaryMessage, Promise[Throwable, Option[Array[Byte]]])].withFinalizer(_.shutdown)
       _             <- entityStates.update(_.updated(entityType.name, EntityState(binaryQueue, entityManager)))
       _             <- ZStream
@@ -400,9 +401,10 @@ object Sharding {
   def registerEntity[R, Req: Tag](
     entityType: EntityType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
-    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
+    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
+    isTopic: Boolean = false
   ): URIO[Sharding with Scope with R, Unit] =
-    ZIO.serviceWithZIO[Sharding](_.registerEntity[R, Req](entityType, behavior, terminateMessage))
+    ZIO.serviceWithZIO[Sharding](_.registerEntity[R, Req](entityType, behavior, terminateMessage, isTopic))
 
   /**
    * Get an object that allows sending messages to a given entity type.
