@@ -22,7 +22,7 @@ object BroadcastingSpec extends ZIOSpecDefault {
         ZIO.scoped {
           for {
             _           <- Sharding.registerEntity(Counter, behavior)
-            _           <- Sharding.registerEntity(IncrementerActor.Incrementer, IncrementerActor.behavior, isTopic = true)
+            _           <- Sharding.registerTopic(IncrementerActor.Incrementer, IncrementerActor.behavior)
             _           <- Sharding.registerScoped
             counter     <- Sharding.messenger(Counter)
             incrementer <- Sharding.broadcaster(IncrementerActor.Incrementer)
@@ -48,7 +48,7 @@ object BroadcastingSpec extends ZIOSpecDefault {
       case object BroadcastIncrement extends IncrementerMessage
     }
 
-    object Incrementer extends EntityType[IncrementerMessage]("incrementer")
+    object Incrementer extends TopicType[IncrementerMessage]("incrementer")
 
     def behavior(topic: String, messages: Dequeue[IncrementerMessage]): RIO[Sharding, Nothing] =
       ZIO.logInfo(s"Started topic $topic on this pod") *>

@@ -5,4 +5,6 @@ package com.devsisters.shardcake
  * @param name a unique string that identifies this entity type
  * @tparam Msg the type of message that can be sent to this entity type
  */
-abstract class EntityType[+Msg](val name: String)
+abstract class RecipientType[+Msg](val name: String)
+abstract class EntityType[+Msg](name: String) extends RecipientType[Msg](name)
+abstract class TopicType[+Msg](name: String)  extends RecipientType[Msg](name)

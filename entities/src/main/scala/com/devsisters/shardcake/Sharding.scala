@@ -174,7 +174,7 @@ class Sharding private (
     )
 
   private def sendToPod[Msg, Res](
-    entityTypeName: String,
+    recipientTypeName: String,
     entityId: String,
     msg: Msg,
     pod: PodAddress,
@@ -184,7 +184,7 @@ class Sharding private (
       serialization
         .encode(msg)
         .flatMap(bytes =>
-          sendToLocalEntity(BinaryMessage(entityId, entityTypeName, bytes, replyId))
+          sendToLocalEntity(BinaryMessage(entityId, recipientTypeName, bytes, replyId))
             .flatMap(ZIO.foreach(_)(serialization.decode[Res]))
         )
     } else if (pod == address) {
@@ -194,7 +194,7 @@ class Sharding private (
         .flatMap(p =>
           entityStates.get.flatMap(s =>
             ZIO
-              .foreach(s.get(entityTypeName))(
+              .foreach(s.get(recipientTypeName))(
                 _.entityManager
                   .asInstanceOf[EntityManager[Msg]]
                   .send(entityId, msg, replyId, p) *>
@@ -208,7 +208,7 @@ class Sharding private (
         .encode(msg)
         .flatMap(bytes =>
           pods
-            .sendMessage(pod, BinaryMessage(entityId, entityTypeName, bytes, replyId))
+            .sendMessage(pod, BinaryMessage(entityId, recipientTypeName, bytes, replyId))
             .tapError {
               ZIO.whenCase(_) { case PodUnavailable(pod) =>
                 val notify = Clock.currentDateTime.flatMap(cdt =>
@@ -231,7 +231,7 @@ class Sharding private (
         )
     }
 
-  def messenger[Msg](entityType: EntityType[Msg]): Messenger[Msg]     =
+  def messenger[Msg](entityType: EntityType[Msg]): Messenger[Msg]   =
     new Messenger[Msg] {
       def sendDiscard(entityId: String)(msg: Msg): UIO[Unit] =
         sendMessage(entityId, msg, None).timeout(config.sendTimeout).forkDaemon.unit
@@ -268,7 +268,7 @@ class Sharding private (
         trySend
       }
     }
-  def broadcaster[Msg](entityType: EntityType[Msg]): Broadcaster[Msg] =
+  def broadcaster[Msg](topicType: TopicType[Msg]): Broadcaster[Msg] =
     new Broadcaster[Msg] {
       def broadcastDiscard(topic: String)(msg: Msg): UIO[Unit] =
         sendMessage(topic, msg).timeout(config.sendTimeout).forkDaemon.unit
@@ -278,7 +278,7 @@ class Sharding private (
           pods <- getPods
           _    <- ZIO.foreachParDiscard(pods) { pod =>
                     def trySend: Task[Option[Unit]] =
-                      sendToPod(entityType.name, entityId, msg, pod, None).catchSome { case _: PodUnavailable =>
+                      sendToPod(topicType.name, entityId, msg, pod, None).catchSome { case _: PodUnavailable =>
                         Clock.sleep(200.millis) *> trySend
                       }
                     trySend
@@ -289,13 +289,25 @@ class Sharding private (
   def registerEntity[R, Req: Tag](
     entityType: EntityType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
+    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
+  ): URIO[Scope with R, Unit] = registerRecipient(entityType, behavior, terminateMessage, isTopic = false)
+
+  def registerTopic[R, Req: Tag](
+    topicType: TopicType[Req],
+    behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
+    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
+  ): URIO[Scope with R, Unit] = registerRecipient(topicType, behavior, terminateMessage, isTopic = true)
+
+  private def registerRecipient[R, Req: Tag](
+    recipientType: RecipientType[Req],
+    behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
-    isTopic: Boolean = false
+    isTopic: Boolean
   ): URIO[Scope with R, Unit] =
     for {
       entityManager <- EntityManager.make(behavior, terminateMessage, self, config, isTopic)
       binaryQueue   <- Queue.unbounded[(BinaryMessage, Promise[Throwable, Option[Array[Byte]]])].withFinalizer(_.shutdown)
-      _             <- entityStates.update(_.updated(entityType.name, EntityState(binaryQueue, entityManager)))
+      _             <- entityStates.update(_.updated(recipientType.name, EntityState(binaryQueue, entityManager)))
       _             <- ZStream
                          .fromQueue(binaryQueue)
                          .mapZIO { case (msg, p) =>
@@ -401,10 +413,16 @@ object Sharding {
   def registerEntity[R, Req: Tag](
     entityType: EntityType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
-    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
-    isTopic: Boolean = false
+    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
   ): URIO[Sharding with Scope with R, Unit] =
-    ZIO.serviceWithZIO[Sharding](_.registerEntity[R, Req](entityType, behavior, terminateMessage, isTopic))
+    ZIO.serviceWithZIO[Sharding](_.registerEntity[R, Req](entityType, behavior, terminateMessage))
+
+  def registerTopic[R, Req: Tag](
+    topicType: TopicType[Req],
+    behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
+    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
+  ): URIO[Sharding with Scope with R, Unit] =
+    ZIO.serviceWithZIO[Sharding](_.registerTopic[R, Req](topicType, behavior, terminateMessage))
 
   /**
    * Get an object that allows sending messages to a given entity type.
@@ -415,8 +433,8 @@ object Sharding {
   /**
    * Get an object that allows broadcasting messages to a given entity type.
    */
-  def broadcaster[Msg](entityType: EntityType[Msg]): URIO[Sharding, Broadcaster[Msg]] =
-    ZIO.serviceWith[Sharding](_.broadcaster(entityType))
+  def broadcaster[Msg](topicType: TopicType[Msg]): URIO[Sharding, Broadcaster[Msg]] =
+    ZIO.serviceWith[Sharding](_.broadcaster(topicType))
 
   /**
    * Get the list of pods currently registered to the Shard Manager
