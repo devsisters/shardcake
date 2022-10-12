@@ -154,7 +154,7 @@ class Sharding private (
             result <- p.await
           } yield result
 
-        case None => ZIO.fail(new Exception(s"No such entity type found: ${msg.entityType}"))
+        case None => ZIO.fail(new Exception(s"Entity type ${msg.entityType} was not registered."))
       }
     )
 
@@ -220,7 +220,7 @@ class Sharding private (
                                             p.await.map(_.asInstanceOf[Option[Res]])
 
                                         case None =>
-                                          ZIO.fail(new Exception(s"No such entity type found: ${entityType.name}"))
+                                          ZIO.fail(new Exception(s"Entity type ${entityType.name} was not registered."))
                                       }
                                     )
                                   )
