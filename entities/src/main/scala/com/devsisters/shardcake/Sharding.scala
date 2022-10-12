@@ -146,15 +146,16 @@ class Sharding private (
 
   private[shardcake] def sendToLocalEntity(msg: BinaryMessage): Task[Option[Array[Byte]]] =
     entityStates.get.flatMap(states =>
-      ZIO
-        .foreach(states.get(msg.entityType)) { state =>
+      states.get(msg.entityType) match {
+        case Some(state) =>
           for {
             p      <- Promise.make[Throwable, Option[Array[Byte]]]
             _      <- state.binaryQueue.offer((msg, p))
             result <- p.await
           } yield result
-        }
-        .map(_.flatten)
+
+        case None => ZIO.fail(new Exception(s"Entity type ${msg.entityType} was not registered."))
+      }
     )
 
   private[shardcake] def initReply(id: String, promise: Promise[Throwable, Option[Any]], context: String): UIO[Unit] =
@@ -210,15 +211,17 @@ class Sharding private (
                                 Promise
                                   .make[Throwable, Option[Any]]
                                   .flatMap(p =>
-                                    entityStates.get.flatMap(s =>
-                                      ZIO
-                                        .foreach(s.get(entityType.name))(
-                                          _.entityManager
+                                    entityStates.get.flatMap(
+                                      _.get(entityType.name) match {
+                                        case Some(state) =>
+                                          state.entityManager
                                             .asInstanceOf[EntityManager[Msg]]
                                             .send(entityId, msg, replyId, p) *>
                                             p.await.map(_.asInstanceOf[Option[Res]])
-                                        )
-                                        .map(_.flatten)
+
+                                        case None =>
+                                          ZIO.fail(new Exception(s"Entity type ${entityType.name} was not registered."))
+                                      }
                                     )
                                   )
                               } else {
