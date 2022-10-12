@@ -11,7 +11,7 @@ object BroadcastingSpec extends ZIOSpecDefault {
 
   private val config = ZLayer.succeed(
     Config.default.copy(
-      ```simulateRemotePods = true```
+      simulateRemotePods = true
     )
   )
 
