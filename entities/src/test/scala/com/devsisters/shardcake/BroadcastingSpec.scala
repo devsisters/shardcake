@@ -9,6 +9,12 @@ import zio.test._
 
 object BroadcastingSpec extends ZIOSpecDefault {
 
+  private val config = ZLayer.succeed(
+    Config.default.copy(
+      ```simulateRemotePods = true```
+    )
+  )
+
   def spec: Spec[TestEnvironment with Scope, Any] =
     suite("BroadcastingSpec")(
       test("Send broadcast to entities") {
@@ -32,7 +38,7 @@ object BroadcastingSpec extends ZIOSpecDefault {
       Pods.noop,
       ShardManagerClient.local,
       Storage.memory,
-      ZLayer.succeed(Config.default)
+      config
     ) @@ sequential @@ withLiveClock
 
   object IncrementerActor {
