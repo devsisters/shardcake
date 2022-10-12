@@ -45,12 +45,12 @@ object BroadcastingSpec extends ZIOSpecDefault {
     object Incrementer extends EntityType[IncrementerMessage]("incrementer")
 
     def behavior(topic: String, messages: Dequeue[IncrementerMessage]): RIO[Sharding, Nothing] =
-
       ZIO.logInfo(s"Started topic $topic on this pod") *>
-        Sharding.messenger(Counter)
+        Sharding
+          .messenger(Counter)
           .flatMap(counter =>
-            messages.take.flatMap {
-              case IncrementerMessage.BroadcastIncrement => counter.sendDiscard("c1")(IncrementCounter)
+            messages.take.flatMap { case IncrementerMessage.BroadcastIncrement =>
+              counter.sendDiscard("c1")(IncrementCounter)
             }.forever
           )
   }

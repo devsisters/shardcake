@@ -173,7 +173,7 @@ class Sharding private (
       ZIO.whenCase(promises.get(replier.id)) { case Some(p) => p.succeed(Some(reply)) }.as(promises - replier.id)
     )
 
-  def messenger[Msg](entityType: EntityType[Msg]): Messenger[Msg] =
+  def messenger[Msg](entityType: EntityType[Msg]): Messenger[Msg]     =
     new Messenger[Msg] {
       def sendDiscard(entityId: String)(msg: Msg): UIO[Unit] =
         sendMessage(entityId, msg, None).timeout(config.sendTimeout).forkDaemon.unit
