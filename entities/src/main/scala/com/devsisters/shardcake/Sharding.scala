@@ -194,16 +194,16 @@ class Sharding private (
         .make[Throwable, Option[Any]]
         .flatMap(p =>
           entityStates.get.flatMap(
-              _.get(recipientTypeName) match {
-                case Some(state) =>
-                                          state.entityManager
+            _.get(recipientTypeName) match {
+              case Some(state) =>
+                state.entityManager
                   .asInstanceOf[EntityManager[Msg]]
                   .send(entityId, msg, replyId, p) *>
                   p.await.map(_.asInstanceOf[Option[Res]])
 
-                                        case None =>
-                                          ZIO.fail(new Exception(s"Entity type ${entityType.name} was not registered."))
-                                      }
+              case None =>
+                ZIO.fail(new Exception(s"Entity type $recipientTypeName was not registered."))
+            }
           )
         )
     } else {
