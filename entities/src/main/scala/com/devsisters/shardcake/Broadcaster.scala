@@ -12,5 +12,5 @@ trait Broadcaster[-Msg] {
   /**
    * Broadcast a message without waiting for a response (fire and forget)
    */
-  def broadcastDiscard(topic: String)(msg: Msg): UIO[Unit]
+  def broadcast(topic: String)(msg: Msg): UIO[Unit]
 }

@@ -273,7 +273,7 @@ class Sharding private (
     }
   def broadcaster[Msg](topicType: TopicType[Msg]): Broadcaster[Msg] =
     new Broadcaster[Msg] {
-      def broadcastDiscard(topic: String)(msg: Msg): UIO[Unit] =
+      def broadcast(topic: String)(msg: Msg): UIO[Unit] =
         sendMessage(topic, msg).timeout(config.sendTimeout).forkDaemon.unit
 
       private def sendMessage(entityId: String, msg: Msg): Task[Unit] =

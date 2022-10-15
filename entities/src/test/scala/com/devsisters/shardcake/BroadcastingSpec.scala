@@ -26,7 +26,7 @@ object BroadcastingSpec extends ZIOSpecDefault {
             _           <- Sharding.registerScoped
             counter     <- Sharding.messenger(Counter)
             incrementer <- Sharding.broadcaster(IncrementerActor.Incrementer)
-            _           <- incrementer.broadcastDiscard("c1")(IncrementerActor.IncrementerMessage.BroadcastIncrement)
+            _           <- incrementer.broadcast("c1")(IncrementerActor.IncrementerMessage.BroadcastIncrement)
             _           <- Clock.sleep(1 second)
             c1          <- counter.send("c1")(GetCounter.apply)
           } yield assertTrue(c1 == 1) // Here we have just one pod, so there will be just one incrementer
