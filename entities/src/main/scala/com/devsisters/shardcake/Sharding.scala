@@ -271,7 +271,7 @@ class Sharding private (
         trySend
       }
     }
-  def broadcaster[Msg](topicType: TopicType[Msg]): Broadcaster[Msg] =
+  def broadcaster[Msg](topicType: Topic[Msg]): Broadcaster[Msg] =
     new Broadcaster[Msg] {
       def broadcast(topic: String)(msg: Msg): UIO[Unit] =
         sendMessage(topic, msg).timeout(config.sendTimeout).forkDaemon.unit
@@ -296,9 +296,9 @@ class Sharding private (
   ): URIO[Scope with R, Unit] = registerRecipient(entityType, behavior, terminateMessage, isTopic = false)
 
   def registerTopic[R, Req: Tag](
-    topicType: TopicType[Req],
-    behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
-    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
+                                  topicType: Topic[Req],
+                                  behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
+                                  terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
   ): URIO[Scope with R, Unit] = registerRecipient(topicType, behavior, terminateMessage, isTopic = true)
 
   private def registerRecipient[R, Req: Tag](
@@ -421,9 +421,9 @@ object Sharding {
     ZIO.serviceWithZIO[Sharding](_.registerEntity[R, Req](entityType, behavior, terminateMessage))
 
   def registerTopic[R, Req: Tag](
-    topicType: TopicType[Req],
-    behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
-    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
+                                  topicType: Topic[Req],
+                                  behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
+                                  terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
   ): URIO[Sharding with Scope with R, Unit] =
     ZIO.serviceWithZIO[Sharding](_.registerTopic[R, Req](topicType, behavior, terminateMessage))
 
@@ -436,7 +436,7 @@ object Sharding {
   /**
    * Get an object that allows broadcasting messages to a given topic.
    */
-  def broadcaster[Msg](topicType: TopicType[Msg]): URIO[Sharding, Broadcaster[Msg]] =
+  def broadcaster[Msg](topicType: Topic[Msg]): URIO[Sharding, Broadcaster[Msg]] =
     ZIO.serviceWith[Sharding](_.broadcaster(topicType))
 
   /**

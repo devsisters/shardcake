@@ -48,7 +48,7 @@ object BroadcastingSpec extends ZIOSpecDefault {
       case object BroadcastIncrement extends IncrementerMessage
     }
 
-    object Incrementer extends TopicType[IncrementerMessage]("incrementer")
+    object Incrementer extends Topic[IncrementerMessage]("incrementer")
 
     def behavior(topic: String, messages: Dequeue[IncrementerMessage]): RIO[Sharding, Nothing] =
       ZIO.logInfo(s"Started topic $topic on this pod") *>
