@@ -434,7 +434,7 @@ object Sharding {
     ZIO.serviceWith[Sharding](_.messenger(entityType))
 
   /**
-   * Get an object that allows broadcasting messages to a given entity type.
+   * Get an object that allows broadcasting messages to a given topic.
    */
   def broadcaster[Msg](topicType: TopicType[Msg]): URIO[Sharding, Broadcaster[Msg]] =
     ZIO.serviceWith[Sharding](_.broadcaster(topicType))
