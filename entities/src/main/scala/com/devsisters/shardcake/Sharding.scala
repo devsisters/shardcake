@@ -276,17 +276,17 @@ class Sharding private (
       def broadcastDiscard(topic: String)(msg: Msg): UIO[Unit] =
         sendMessage(topic, msg, None).timeout(config.sendTimeout).forkDaemon.unit
 
-      def broadcast[Res](topic: String)(msg: Replier[Res] => Msg): Task[Set[Res]] =
+      def broadcast[Res](topic: String)(msg: Replier[Res] => Msg): Task[List[Res]] =
         Random.nextUUID.flatMap { uuid =>
           val body = msg(Replier(uuid.toString))
           sendMessage[Res](topic, body, Some(uuid.toString)).interruptible
         }
 
-      private def sendMessage[Res](entityId: String, msg: Msg, replyId: Option[String]): Task[Set[Res]] =
+      private def sendMessage[Res](entityId: String, msg: Msg, replyId: Option[String]): Task[List[Res]] =
         for {
           pods <- getPods
           res  <- ZIO
-                    .foreachPar(pods) { pod =>
+                    .foreachPar(pods.toList) { pod =>
                       def trySend: Task[Option[Res]] =
                         sendToPod(topicType.name, entityId, msg, pod, replyId).catchSome { case _: PodUnavailable =>
                           Clock.sleep(200.millis) *> trySend
