@@ -26,7 +26,7 @@ object BroadcastingSpec extends DefaultRunnableSpec {
             _           <- incrementer.broadcastDiscard("c1")(IncrementerActor.IncrementerMessage.BroadcastIncrement)
             _           <- clock.sleep(1 second)
             c1          <- incrementer.broadcast("c1")(IncrementerActor.IncrementerMessage.GetIncrement(_))
-          } yield assertTrue(c1 == Set(1)) // here we have just one pod, so there will be just one incrementer
+          } yield assertTrue(c1 == List(1)) // here we have just one pod, so there will be just one incrementer
         }
       }
     ).provideLayerShared(layer) @@ sequential

@@ -16,5 +16,5 @@ trait Broadcaster[-Msg] {
   /**
    * Broadcast a message and wait for a response from each consumer
    */
-  def broadcast[Res](topic: String)(msg: Replier[Res] => Msg): Task[Set[Res]]
+  def broadcast[Res](topic: String)(msg: Replier[Res] => Msg): Task[List[Res]]
 }
