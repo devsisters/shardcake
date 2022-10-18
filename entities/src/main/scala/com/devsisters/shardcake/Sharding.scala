@@ -420,6 +420,12 @@ object Sharding {
   ): URIO[Sharding with Scope with R, Unit] =
     ZIO.serviceWithZIO[Sharding](_.registerEntity[R, Req](entityType, behavior, terminateMessage))
 
+  /**
+   * Register a new topic, allowing pods to broadcast messages to subscribers.
+   * It takes a `behavior` which is a function from a topic and a queue of messages to a ZIO computation that runs forever and consumes those messages.
+   * You can use `ZIO.interrupt` from the behavior to stop it (it will be restarted the next time the topic receives a message).
+   * If provided, the optional `terminateMessage` will be sent to the topic before it is stopped, allowing for cleanup logic.
+   */
   def registerTopic[R, Req: Tag](
     topicType: Topic[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
