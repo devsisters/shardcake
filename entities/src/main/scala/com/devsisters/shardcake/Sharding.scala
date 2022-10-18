@@ -271,7 +271,7 @@ class Sharding private (
       }
     }
 
-  def broadcaster[Msg](topicType: Topic[Msg]): Broadcaster[Msg] =
+  def broadcaster[Msg](topicType: TopicType[Msg]): Broadcaster[Msg] =
     new Broadcaster[Msg] {
       def broadcastDiscard(topic: String)(msg: Msg): UIO[Unit] =
         sendMessage(topic, msg, None).timeout(config.sendTimeout).forkDaemon.unit
@@ -303,7 +303,7 @@ class Sharding private (
   ): URIO[Scope with R, Unit] = registerRecipient(entityType, behavior, terminateMessage, isTopic = false)
 
   def registerTopic[R, Req: Tag](
-    topicType: Topic[Req],
+    topicType: TopicType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
   ): URIO[Scope with R, Unit] = registerRecipient(topicType, behavior, terminateMessage, isTopic = true)
@@ -428,13 +428,13 @@ object Sharding {
     ZIO.serviceWithZIO[Sharding](_.registerEntity[R, Req](entityType, behavior, terminateMessage))
 
   /**
-   * Register a new topic, allowing pods to broadcast messages to subscribers.
+   * Register a new topic type, allowing pods to broadcast messages to subscribers.
    * It takes a `behavior` which is a function from a topic and a queue of messages to a ZIO computation that runs forever and consumes those messages.
    * You can use `ZIO.interrupt` from the behavior to stop it (it will be restarted the next time the topic receives a message).
    * If provided, the optional `terminateMessage` will be sent to the topic before it is stopped, allowing for cleanup logic.
    */
   def registerTopic[R, Req: Tag](
-    topicType: Topic[Req],
+    topicType: TopicType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
   ): URIO[Sharding with Scope with R, Unit] =
@@ -447,9 +447,9 @@ object Sharding {
     ZIO.serviceWith[Sharding](_.messenger(entityType))
 
   /**
-   * Get an object that allows broadcasting messages to a given topic.
+   * Get an object that allows broadcasting messages to a given topic type.
    */
-  def broadcaster[Msg](topicType: Topic[Msg]): URIO[Sharding, Broadcaster[Msg]] =
+  def broadcaster[Msg](topicType: TopicType[Msg]): URIO[Sharding, Broadcaster[Msg]] =
     ZIO.serviceWith[Sharding](_.broadcaster(topicType))
 
   /**
