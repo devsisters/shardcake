@@ -1,7 +1,7 @@
 package com.devsisters.shardcake
 
 /**
- * An abstract type to extend for each type of entity or topic type
+ * An abstract type to extend for each type of entity or topic
  * @param name a unique string that identifies this entity or topic type
  * @tparam Msg the type of message that can be sent to this entity or topic type
  */
