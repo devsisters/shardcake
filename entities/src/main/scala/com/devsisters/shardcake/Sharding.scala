@@ -12,6 +12,7 @@ import zio.random.Random
 import zio.stream.ZStream
 
 import java.time.OffsetDateTime
+import scala.util.Try
 
 /**
  * A component that takes care of communicating with sharded entities.
@@ -283,25 +284,31 @@ class Sharding private (
       def broadcastDiscard(topic: String)(msg: Msg): UIO[Unit] =
         sendMessage(topic, msg, None).timeout(config.sendTimeout).provideLayer(Clock.live).forkDaemon.unit
 
-      def broadcast[Res](topic: String)(msg: Replier[Res] => Msg): Task[List[Res]] =
-        random.nextUUID.flatMap { uuid =>
+      def broadcast[Res](topic: String)(msg: Replier[Res] => Msg): UIO[Map[PodAddress, Try[Res]]] =
+       random.nextUUID.flatMap { uuid =>
           val body = msg(Replier(uuid.toString))
           sendMessage[Res](topic, body, Some(uuid.toString)).interruptible
         }
 
-      private def sendMessage[Res](entityId: String, msg: Msg, replyId: Option[String]): Task[List[Res]] =
+      private def sendMessage[Res](topic: String, msg: Msg, replyId: Option[String]): UIO[Map[PodAddress, Try[Res]]] =
         for {
           pods <- getPods
           res  <- ZIO
                     .foreachPar(pods.toList) { pod =>
                       def trySend: Task[Option[Res]] =
-                        sendToPod(topicType.name, entityId, msg, pod, replyId).catchSome { case _: PodUnavailable =>
+                        sendToPod(topicType.name, topic, msg, pod, replyId).catchSome { case _: PodUnavailable =>
                           clock.sleep(200.millis) *> trySend
                         }
-                      trySend.timeout(config.sendTimeout)
+                      trySend.flatMap {
+                        case Some(value) => ZIO.succeed(value)
+                        case None        => ZIO.fail(new Exception(s"Send returned nothing, topic=$topic"))
+                      }
+                        .timeoutFail(new Exception(s"Send timed out, topic=$topic"))(config.sendTimeout)
+                        .either
+                        .map(pod -> _.toTry)
                     }
                     .provideLayer(Clock.live)
-        } yield res.flatten.flatten
+        } yield res.toMap
     }
 
   private def registerEntity[R, Req: Tag](

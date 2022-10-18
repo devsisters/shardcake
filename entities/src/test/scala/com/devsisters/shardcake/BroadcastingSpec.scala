@@ -9,6 +9,8 @@ import zio.test.TestAspect.sequential
 import zio.test._
 import zio.test.environment.TestEnvironment
 
+import scala.util.Success
+
 object BroadcastingSpec extends DefaultRunnableSpec {
 
   private val layer =
@@ -26,7 +28,9 @@ object BroadcastingSpec extends DefaultRunnableSpec {
             _           <- incrementer.broadcastDiscard("c1")(IncrementerActor.IncrementerMessage.BroadcastIncrement)
             _           <- clock.sleep(1 second)
             c1          <- incrementer.broadcast("c1")(IncrementerActor.IncrementerMessage.GetIncrement(_))
-          } yield assertTrue(c1 == List(1)) // here we have just one pod, so there will be just one incrementer
+          } yield assertTrue(
+            c1.values.toList == List(Success(1)) // Here we have just one pod, so there will be just one incrementer
+          )
         }
       }
     ).provideLayerShared(layer) @@ sequential
