@@ -285,7 +285,7 @@ class Sharding private (
         sendMessage(topic, msg, None).timeout(config.sendTimeout).provideLayer(Clock.live).forkDaemon.unit
 
       def broadcast[Res](topic: String)(msg: Replier[Res] => Msg): UIO[Map[PodAddress, Try[Res]]] =
-       random.nextUUID.flatMap { uuid =>
+        random.nextUUID.flatMap { uuid =>
           val body = msg(Replier(uuid.toString))
           sendMessage[Res](topic, body, Some(uuid.toString)).interruptible
         }
