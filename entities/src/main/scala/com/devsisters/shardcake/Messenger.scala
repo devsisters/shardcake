@@ -1,7 +1,6 @@
 package com.devsisters.shardcake
 
-import com.devsisters.shardcake.Messenger.Replier
-import zio.{ Has, Task, UIO, URIO, ZIO }
+import zio.{ Task, UIO }
 
 /**
  * An interface to communicate with a remote entity
@@ -18,14 +17,4 @@ trait Messenger[-Msg] {
    * Send a message and wait for a response of type `Res`
    */
   def send[Res](entityId: String)(msg: Replier[Res] => Msg): Task[Res]
-}
-
-object Messenger {
-
-  /**
-   * A metadata object that allows sending a response back to the sender
-   */
-  case class Replier[-R](id: String) { self =>
-    def reply(reply: R): URIO[Has[Sharding], Unit] = ZIO.serviceWith[Sharding](_.reply(reply, self))
-  }
 }

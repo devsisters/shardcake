@@ -1,6 +1,6 @@
 package com.devsisters.shardcake
 
-import zio.UIO
+import zio.{ Task, UIO }
 
 /**
  * An interface to communicate with a remote broadcast receiver
@@ -11,5 +11,10 @@ trait Broadcaster[-Msg] {
   /**
    * Broadcast a message without waiting for a response (fire and forget)
    */
-  def broadcast(topic: String)(msg: Msg): UIO[Unit]
+  def broadcastDiscard(topic: String)(msg: Msg): UIO[Unit]
+
+  /**
+   * Broadcast a message and wait for a response from each consumer
+   */
+  def broadcast[Res](topic: String)(msg: Replier[Res] => Msg): Task[Set[Res]]
 }
