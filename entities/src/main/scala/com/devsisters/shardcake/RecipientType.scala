@@ -7,4 +7,4 @@ package com.devsisters.shardcake
  */
 sealed abstract class RecipientType[+Msg](val name: String)
 abstract class EntityType[+Msg](name: String) extends RecipientType[Msg](name)
-abstract class Topic[+Msg](name: String)  extends RecipientType[Msg](name)
+abstract class Topic[+Msg](name: String)      extends RecipientType[Msg](name)
