@@ -1,6 +1,8 @@
 package com.devsisters.shardcake
 
-import zio.{ Task, UIO }
+import zio.UIO
+
+import scala.util.Try
 
 /**
  * An interface to communicate with a remote broadcast receiver
@@ -16,5 +18,5 @@ trait Broadcaster[-Msg] {
   /**
    * Broadcast a message and wait for a response from each consumer
    */
-  def broadcast[Res](topic: String)(msg: Replier[Res] => Msg): Task[List[Res]]
+  def broadcast[Res](topic: String)(msg: Replier[Res] => Msg): UIO[Map[PodAddress, Try[Res]]]
 }
