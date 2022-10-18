@@ -1,6 +1,5 @@
 package com.devsisters.shardcake
 
-import com.devsisters.shardcake.Messenger.Replier
 import com.devsisters.shardcake.Sharding.EntityState
 import com.devsisters.shardcake.errors.{ EntityNotManagedByThisPod, PodUnavailable, SendTimeoutException }
 import com.devsisters.shardcake.interfaces.Pods.BinaryMessage
@@ -271,22 +270,30 @@ class Sharding private (
         trySend
       }
     }
-  def broadcaster[Msg](topicType: Topic[Msg]): Broadcaster[Msg]   =
-    new Broadcaster[Msg] {
-      def broadcast(topic: String)(msg: Msg): UIO[Unit] =
-        sendMessage(topic, msg).timeout(config.sendTimeout).forkDaemon.unit
 
-      private def sendMessage(entityId: String, msg: Msg): Task[Unit] =
+  def broadcaster[Msg](topicType: Topic[Msg]): Broadcaster[Msg] =
+    new Broadcaster[Msg] {
+      def broadcastDiscard(topic: String)(msg: Msg): UIO[Unit] =
+        sendMessage(topic, msg, None).timeout(config.sendTimeout).forkDaemon.unit
+
+      def broadcast[Res](topic: String)(msg: Replier[Res] => Msg): Task[Set[Res]] =
+        Random.nextUUID.flatMap { uuid =>
+          val body = msg(Replier(uuid.toString))
+          sendMessage[Res](topic, body, Some(uuid.toString)).interruptible
+        }
+
+      private def sendMessage[Res](entityId: String, msg: Msg, replyId: Option[String]): Task[Set[Res]] =
         for {
           pods <- getPods
-          _    <- ZIO.foreachParDiscard(pods) { pod =>
-                    def trySend: Task[Option[Unit]] =
-                      sendToPod(topicType.name, entityId, msg, pod, None).catchSome { case _: PodUnavailable =>
-                        Clock.sleep(200.millis) *> trySend
-                      }
-                    trySend
-                  }
-        } yield ()
+          res  <- ZIO
+                    .foreachPar(pods) { pod =>
+                      def trySend: Task[Option[Res]] =
+                        sendToPod(topicType.name, entityId, msg, pod, replyId).catchSome { case _: PodUnavailable =>
+                          Clock.sleep(200.millis) *> trySend
+                        }
+                      trySend.timeout(config.sendTimeout)
+                    }
+        } yield res.flatten.flatten
     }
 
   def registerEntity[R, Req: Tag](
