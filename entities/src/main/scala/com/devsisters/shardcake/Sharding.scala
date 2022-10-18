@@ -278,7 +278,7 @@ class Sharding private (
       }
     }
 
-  def broadcaster[Msg](topicType: Topic[Msg]): Broadcaster[Msg] =
+  def broadcaster[Msg](topicType: TopicType[Msg]): Broadcaster[Msg] =
     new Broadcaster[Msg] {
       def broadcastDiscard(topic: String)(msg: Msg): UIO[Unit] =
         sendMessage(topic, msg, None).timeout(config.sendTimeout).provideLayer(Clock.live).forkDaemon.unit
@@ -311,13 +311,13 @@ class Sharding private (
   ): ZManaged[Clock with R, Nothing, Unit] = registerRecipient(entityType, behavior, terminateMessage, isTopic = false)
 
   private def registerTopic[R, Req: Tag](
-    topic: Topic[Req],
+    topicType: TopicType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
-  ): ZManaged[Clock with R, Nothing, Unit] = registerRecipient(topic, behavior, terminateMessage, isTopic = true)
+  ): ZManaged[Clock with R, Nothing, Unit] = registerRecipient(topicType, behavior, terminateMessage, isTopic = true)
 
   private def registerRecipient[R, Req: Tag](
-    entityType: RecipientType[Req],
+    recipientType: RecipientType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
     isTopic: Boolean
@@ -325,7 +325,7 @@ class Sharding private (
     for {
       entityManager <- EntityManager.make(behavior, terminateMessage, self, config, isTopic).toManaged_
       binaryQueue   <- Queue.unbounded[(BinaryMessage, Promise[Throwable, Option[Array[Byte]]])].toManaged(_.shutdown)
-      _             <- entityStates.update(_.updated(entityType.name, EntityState(binaryQueue, entityManager))).toManaged_
+      _             <- entityStates.update(_.updated(recipientType.name, EntityState(binaryQueue, entityManager))).toManaged_
       _             <- ZStream
                          .fromQueue(binaryQueue)
                          .mapM { case (msg, p) =>
@@ -446,19 +446,19 @@ object Sharding {
     } yield ()
 
   /**
-   * Register a new topic, allowing pods to broadcast messages to subscribers.
+   * Register a new topic type, allowing pods to broadcast messages to subscribers.
    * It takes a `behavior` which is a function from a topic and a queue of messages to a ZIO computation that runs forever and consumes those messages.
    * You can use `ZIO.interrupt` from the behavior to stop it (it will be restarted the next time the topic receives a message).
    * If provided, the optional `terminateMessage` will be sent to the topic before it is stopped, allowing for cleanup logic.
    */
   def registerTopic[R, Req: Tag](
-    topic: Topic[Req],
+    topicType: TopicType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
   ): ZManaged[Has[Sharding] with R with Clock, Nothing, Unit] =
     for {
       sharding <- ZIO.service[Sharding].toManaged_
-      _        <- sharding.registerTopic[R, Req](topic, behavior, terminateMessage)
+      _        <- sharding.registerTopic[R, Req](topicType, behavior, terminateMessage)
     } yield ()
 
   /**
@@ -470,7 +470,7 @@ object Sharding {
   /**
    * Get an object that allows broadcasting messages to a given topic.
    */
-  def broadcaster[Msg](topicType: Topic[Msg]): URIO[Has[Sharding], Broadcaster[Msg]] =
+  def broadcaster[Msg](topicType: TopicType[Msg]): URIO[Has[Sharding], Broadcaster[Msg]] =
     ZIO.service[Sharding].map(_.broadcaster(topicType))
 
   /**
