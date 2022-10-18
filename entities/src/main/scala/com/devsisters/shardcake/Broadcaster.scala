@@ -1,7 +1,6 @@
 package com.devsisters.shardcake
 
-import com.devsisters.shardcake.Messenger.Replier
-import zio.{ Task, UIO, URIO, ZIO }
+import zio.UIO
 
 /**
  * An interface to communicate with a remote broadcast receiver
