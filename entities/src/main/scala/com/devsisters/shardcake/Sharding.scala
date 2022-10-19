@@ -1,6 +1,5 @@
 package com.devsisters.shardcake
 
-import com.devsisters.shardcake.Messenger.Replier
 import com.devsisters.shardcake.Sharding.EntityState
 import com.devsisters.shardcake.errors.{ EntityNotManagedByThisPod, PodUnavailable, SendTimeoutException }
 import com.devsisters.shardcake.interfaces.Pods.BinaryMessage
@@ -10,6 +9,7 @@ import zio._
 import zio.stream.ZStream
 
 import java.time.OffsetDateTime
+import scala.util.Try
 
 /**
  * A component that takes care of communicating with sharded entities.
@@ -271,22 +271,36 @@ class Sharding private (
         trySend
       }
     }
-  def broadcaster[Msg](topicType: Topic[Msg]): Broadcaster[Msg]   =
-    new Broadcaster[Msg] {
-      def broadcast(topic: String)(msg: Msg): UIO[Unit] =
-        sendMessage(topic, msg).timeout(config.sendTimeout).forkDaemon.unit
 
-      private def sendMessage(entityId: String, msg: Msg): Task[Unit] =
+  def broadcaster[Msg](topicType: TopicType[Msg]): Broadcaster[Msg] =
+    new Broadcaster[Msg] {
+      def broadcastDiscard(topic: String)(msg: Msg): UIO[Unit] =
+        sendMessage(topic, msg, None).timeout(config.sendTimeout).forkDaemon.unit
+
+      def broadcast[Res](topic: String)(msg: Replier[Res] => Msg): UIO[Map[PodAddress, Try[Res]]] =
+        Random.nextUUID.flatMap { uuid =>
+          val body = msg(Replier(uuid.toString))
+          sendMessage[Res](topic, body, Some(uuid.toString)).interruptible
+        }
+
+      private def sendMessage[Res](topic: String, msg: Msg, replyId: Option[String]): UIO[Map[PodAddress, Try[Res]]] =
         for {
           pods <- getPods
-          _    <- ZIO.foreachParDiscard(pods) { pod =>
-                    def trySend: Task[Option[Unit]] =
-                      sendToPod(topicType.name, entityId, msg, pod, None).catchSome { case _: PodUnavailable =>
-                        Clock.sleep(200.millis) *> trySend
+          res  <- ZIO
+                    .foreachPar(pods.toList) { pod =>
+                      def trySend: Task[Option[Res]] =
+                        sendToPod(topicType.name, topic, msg, pod, replyId).catchSome { case _: PodUnavailable =>
+                          Clock.sleep(200.millis) *> trySend
+                        }
+                      trySend.flatMap {
+                        case Some(value) => ZIO.succeed(value)
+                        case None        => ZIO.fail(new Exception(s"Send returned nothing, topic=$topic"))
                       }
-                    trySend
-                  }
-        } yield ()
+                        .timeoutFail(new Exception(s"Send timed out, topic=$topic"))(config.sendTimeout)
+                        .either
+                        .map(pod -> _.toTry)
+                    }
+        } yield res.toMap
     }
 
   def registerEntity[R, Req: Tag](
@@ -296,7 +310,7 @@ class Sharding private (
   ): URIO[Scope with R, Unit] = registerRecipient(entityType, behavior, terminateMessage, isTopic = false)
 
   def registerTopic[R, Req: Tag](
-    topicType: Topic[Req],
+    topicType: TopicType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
   ): URIO[Scope with R, Unit] = registerRecipient(topicType, behavior, terminateMessage, isTopic = true)
@@ -421,13 +435,13 @@ object Sharding {
     ZIO.serviceWithZIO[Sharding](_.registerEntity[R, Req](entityType, behavior, terminateMessage))
 
   /**
-   * Register a new topic, allowing pods to broadcast messages to subscribers.
+   * Register a new topic type, allowing pods to broadcast messages to subscribers.
    * It takes a `behavior` which is a function from a topic and a queue of messages to a ZIO computation that runs forever and consumes those messages.
    * You can use `ZIO.interrupt` from the behavior to stop it (it will be restarted the next time the topic receives a message).
    * If provided, the optional `terminateMessage` will be sent to the topic before it is stopped, allowing for cleanup logic.
    */
   def registerTopic[R, Req: Tag](
-    topicType: Topic[Req],
+    topicType: TopicType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
   ): URIO[Sharding with Scope with R, Unit] =
@@ -440,9 +454,9 @@ object Sharding {
     ZIO.serviceWith[Sharding](_.messenger(entityType))
 
   /**
-   * Get an object that allows broadcasting messages to a given topic.
+   * Get an object that allows broadcasting messages to a given topic type.
    */
-  def broadcaster[Msg](topicType: Topic[Msg]): URIO[Sharding, Broadcaster[Msg]] =
+  def broadcaster[Msg](topicType: TopicType[Msg]): URIO[Sharding, Broadcaster[Msg]] =
     ZIO.serviceWith[Sharding](_.broadcaster(topicType))
 
   /**
