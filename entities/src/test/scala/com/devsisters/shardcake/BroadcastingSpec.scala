@@ -14,7 +14,7 @@ import scala.util.Success
 object BroadcastingSpec extends DefaultRunnableSpec {
 
   private val layer =
-    (Clock.live ++ Random.live ++ ZLayer.succeed(Config.default) >+>
+    (Clock.live ++ Random.live ++ ZLayer.succeed(Config.default.copy(simulateRemotePods = true)) >+>
       ShardManagerClient.local ++ Logging.debug ++ Pods.noop ++ Storage.memory ++ Serialization.javaSerialization >+>
       Sharding.live).mapError(TestFailure.fail)
 
