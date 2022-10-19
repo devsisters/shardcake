@@ -1,7 +1,6 @@
 package example.complex
 
-import com.devsisters.shardcake.Messenger.Replier
-import com.devsisters.shardcake.{ EntityType, Sharding }
+import com.devsisters.shardcake.{ EntityType, Replier, Sharding }
 import dev.profunktor.redis4cats.RedisCommands
 import zio.{ Dequeue, Has, Promise, RIO, Task, ZIO }
 

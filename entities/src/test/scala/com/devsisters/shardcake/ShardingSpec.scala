@@ -2,7 +2,6 @@ package com.devsisters.shardcake
 
 import com.devsisters.shardcake.CounterActor.CounterMessage._
 import com.devsisters.shardcake.CounterActor._
-import com.devsisters.shardcake.Messenger.Replier
 import com.devsisters.shardcake.interfaces.{ Logging, Pods, Serialization, Storage }
 import zio._
 import zio.clock.Clock

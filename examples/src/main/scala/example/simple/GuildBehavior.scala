@@ -1,8 +1,8 @@
 package example.simple
 
-import com.devsisters.shardcake.Messenger.Replier
-import com.devsisters.shardcake.{ EntityType, Sharding }
+import com.devsisters.shardcake.{ EntityType, Replier, Sharding }
 import zio.{ Dequeue, Has, RIO, Ref, ZIO }
+
 import scala.util.{ Failure, Success, Try }
 
 object GuildBehavior {
