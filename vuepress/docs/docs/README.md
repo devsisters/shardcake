@@ -211,6 +211,11 @@ Success(HashSet(user1, user5, user4, user2, user3))
 Failure(java.lang.Exception: Guild is already full!)
 ```
 
+#### One more thing...
+`Sharding` also exposes 2 methods that can be interesting for some use cases:
+- `registerSingleton` lets you register some background processes that will run in only one pod at any given time. Singletons can't receive messages and they are not stopped in case of inactivity.
+- `registerTopic` lets you broadcast messages to all registered pods (use `Sharding.broadcaster` instead of `Sharding.messenger`).
+
 ### Where to go from there?
 In this simple example, we only had a single pod so there was no real benefit from using sharding.
 But we could run the exact same code on multiple pods, and the sharding system would ensure that each guild is only running on a single pod.
