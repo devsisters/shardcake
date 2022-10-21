@@ -358,14 +358,14 @@ object Sharding {
 
   object ShardingRegistrationEvent {
     case class EntityRegistered(entityType: EntityType[_]) extends ShardingRegistrationEvent {
-      override def toString: String = s"Registering entity ${entityType.name}"
+      override def toString: String = s"Registered entity ${entityType.name}"
     }
     case class SingletonRegistered(name: String)           extends ShardingRegistrationEvent {
-      override def toString: String = s"Registering singleton $name"
+      override def toString: String = s"Registered singleton $name"
     }
     case class TopicRegistered(topicType: TopicType[_])    extends ShardingRegistrationEvent {
 
-      override def toString: String = s"Registering topic ${topicType.name}"
+      override def toString: String = s"Registered topic ${topicType.name}"
 
     }
   }
