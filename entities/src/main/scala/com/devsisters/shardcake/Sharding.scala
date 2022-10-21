@@ -366,9 +366,17 @@ object Sharding {
   sealed trait ShardingRegistrationEvent
 
   object ShardingRegistrationEvent {
-    case class EntityRegistered(entityType: EntityType[_]) extends ShardingRegistrationEvent
-    case class SingletonRegistered(name: String)           extends ShardingRegistrationEvent
-    case class TopicRegistered(topicType: TopicType[_])    extends ShardingRegistrationEvent
+    case class EntityRegistered(entityType: EntityType[_]) extends ShardingRegistrationEvent {
+      override def toString: String = s"Registering entity ${entityType.name}"
+    }
+    case class SingletonRegistered(name: String)           extends ShardingRegistrationEvent {
+      override def toString: String = s"Registering singleton $name"
+    }
+    case class TopicRegistered(topicType: TopicType[_])    extends ShardingRegistrationEvent {
+
+      override def toString: String = s"Registering topic ${topicType.name}"
+
+    }
   }
 
   private[shardcake] case class EntityState(
