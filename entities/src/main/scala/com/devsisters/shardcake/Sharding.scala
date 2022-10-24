@@ -29,8 +29,8 @@ class Sharding private (
   storage: Storage,
   serialization: Serialization
 ) { self =>
-  private[shardcake] def getShardId(entityId: String): ShardId =
-    math.abs(entityId.hashCode % config.numberOfShards) + 1
+  private[shardcake] def getShardId(recipientType: RecipientType[_], entityId: String): ShardId =
+    recipientType.getShardId(entityId, config.numberOfShards)
 
   val register: Task[Unit] =
     ZIO.logDebug(s"Registering pod $address to Shard Manager") *>
@@ -100,10 +100,10 @@ class Sharding private (
       stopSingletonsIfNeeded <*
       ZIO.logDebug(s"Unassigned shards: $shards")
 
-  private[shardcake] def isEntityOnLocalShards(entityId: String): UIO[Boolean] =
+  private[shardcake] def isEntityOnLocalShards(recipientType: RecipientType[_], entityId: String): UIO[Boolean] =
     for {
       shards <- shardAssignments.get
-      shardId = getShardId(entityId)
+      shardId = getShardId(recipientType, entityId)
       pod     = shards.get(shardId)
     } yield pod.contains(address)
 
@@ -251,7 +251,7 @@ class Sharding private (
         }
 
       private def sendMessage[Res](entityId: String, msg: Msg, replyId: Option[String]): Task[Option[Res]] = {
-        val shardId                    = getShardId(entityId)
+        val shardId                    = getShardId(entityType, entityId)
         def trySend: Task[Option[Res]] =
           for {
             shards   <- shardAssignments.get
@@ -307,22 +307,21 @@ class Sharding private (
     entityType: EntityType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
-  ): URIO[Scope with R, Unit] = registerRecipient(entityType, behavior, terminateMessage, isTopic = false)
+  ): URIO[Scope with R, Unit] = registerRecipient(entityType, behavior, terminateMessage)
 
   def registerTopic[R, Req: Tag](
     topicType: TopicType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
-  ): URIO[Scope with R, Unit] = registerRecipient(topicType, behavior, terminateMessage, isTopic = true)
+  ): URIO[Scope with R, Unit] = registerRecipient(topicType, behavior, terminateMessage)
 
-  private def registerRecipient[R, Req: Tag](
+  def registerRecipient[R, Req: Tag](
     recipientType: RecipientType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
-    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
-    isTopic: Boolean
+    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
   ): URIO[Scope with R, Unit] =
     for {
-      entityManager <- EntityManager.make(behavior, terminateMessage, self, config, isTopic)
+      entityManager <- EntityManager.make(recipientType, behavior, terminateMessage, self, config)
       binaryQueue   <- Queue.unbounded[(BinaryMessage, Promise[Throwable, Option[Array[Byte]]])].withFinalizer(_.shutdown)
       _             <- entityStates.update(_.updated(recipientType.name, EntityState(binaryQueue, entityManager)))
       _             <- ZStream
