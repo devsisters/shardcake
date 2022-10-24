@@ -1,7 +1,7 @@
 package com.devsisters.shardcake.internal
 
 import com.devsisters.shardcake.errors.EntityNotManagedByThisPod
-import com.devsisters.shardcake.{ Config, ShardId, Sharding }
+import com.devsisters.shardcake.{ Config, EntityType, RecipientType, ShardId, Sharding, TopicType }
 import zio._
 import zio.duration._
 import zio.clock.Clock
@@ -19,33 +19,33 @@ private[shardcake] trait EntityManager[-Req] {
 
 private[shardcake] object EntityManager {
   def make[R, Req: Tag](
+    recipientType: RecipientType[Req],
     behavior: (String, Queue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req],
     sharding: Sharding,
-    config: Config,
-    isTopic: Boolean
+    config: Config
   ): URIO[R with Clock, EntityManager[Req]] =
     for {
       entities <- RefM.make[Map[String, (Option[Queue[Req]], Fiber[Nothing, Unit])]](Map())
       env      <- ZIO.environment[R]
       clock    <- ZIO.service[Clock.Service]
     } yield new EntityManagerLive[Req](
+      recipientType,
       (entityId: String, queue: Queue[Req]) => behavior(entityId, queue).provide(env),
       terminateMessage,
       entities,
       sharding,
       config,
-      isTopic,
       clock
     )
 
   class EntityManagerLive[Req](
+    recipientType: RecipientType[Req],
     behavior: (String, Queue[Req]) => Task[Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req],
     entities: RefM[Map[String, (Option[Queue[Req]], Fiber[Nothing, Unit])]],
     sharding: Sharding,
     config: Config,
-    isTopic: Boolean,
     clock: Clock.Service
   ) extends EntityManager[Req] {
     private def startExpirationFiber(entityId: String): UIO[Fiber[Nothing, Unit]] =
@@ -83,9 +83,13 @@ private[shardcake] object EntityManager {
     ): IO[EntityNotManagedByThisPod, Unit] =
       for {
         // first, verify that this entity should be handled by this pod
-        _     <- ZIO.unless(isTopic)(
-                   ZIO.unlessM(sharding.isEntityOnLocalShards(entityId))(ZIO.fail(EntityNotManagedByThisPod(entityId)))
-                 )
+        _     <- recipientType match {
+                   case _: EntityType[_] =>
+                     ZIO.unlessM(sharding.isEntityOnLocalShards(recipientType, entityId))(
+                       ZIO.fail(EntityNotManagedByThisPod(entityId))
+                     )
+                   case _: TopicType[_]  => ZIO.unit
+                 }
         // find the queue for that entity, or create it if needed
         queue <- entities.modify(map =>
                    map.get(entityId) match {
@@ -136,7 +140,9 @@ private[shardcake] object EntityManager {
     def terminateEntitiesOnShards(shards: Set[ShardId]): UIO[Unit] =
       entities.modify { entities =>
         // get all entities on the given shards to terminate them
-        ZIO.succeed(entities.partition { case (entityId, _) => shards.contains(sharding.getShardId(entityId)) })
+        ZIO.succeed(entities.partition { case (entityId, _) =>
+          shards.contains(sharding.getShardId(recipientType, entityId))
+        })
       }
         .flatMap(terminateEntities)
 
