@@ -35,8 +35,8 @@ class Sharding private (
   clock: Clock.Service,
   serialization: Serialization
 ) { self =>
-  private[shardcake] def getShardId(entityId: String): ShardId =
-    math.abs(entityId.hashCode % config.numberOfShards) + 1
+  private[shardcake] def getShardId(recipientType: RecipientType[_], entityId: String): ShardId =
+    recipientType.getShardId(entityId, config.numberOfShards)
 
   val register: Task[Unit] =
     logger.logDebug(s"Registering pod $address to Shard Manager") *>
@@ -103,10 +103,10 @@ class Sharding private (
       stopSingletonsIfNeeded <*
       logger.logDebug(s"Unassigned shards: $shards")
 
-  private[shardcake] def isEntityOnLocalShards(entityId: String): UIO[Boolean] =
+  private[shardcake] def isEntityOnLocalShards(recipientType: RecipientType[_], entityId: String): UIO[Boolean] =
     for {
       shards <- shardAssignments.get
-      shardId = getShardId(entityId)
+      shardId = getShardId(recipientType, entityId)
       pod     = shards.get(shardId)
     } yield pod.contains(address)
 
@@ -239,7 +239,7 @@ class Sharding private (
         )
     }
 
-  def messenger[Msg](entityType: EntityType[Msg]): Messenger[Msg] =
+  def messenger[Msg](entityType: EntityType[Msg]): Messenger[Msg]   =
     new Messenger[Msg] {
       def sendDiscard(entityId: String)(msg: Msg): UIO[Unit] =
         sendMessage(entityId, msg, None).timeout(config.sendTimeout).provideLayer(Clock.live).forkDaemon.unit
@@ -257,7 +257,7 @@ class Sharding private (
         }
 
       private def sendMessage[Res](entityId: String, msg: Msg, replyId: Option[String]): Task[Option[Res]] = {
-        val shardId = getShardId(entityId)
+        val shardId = getShardId(entityType, entityId)
 
         def trySend: Task[Option[Res]] =
           for {
@@ -278,7 +278,7 @@ class Sharding private (
         trySend
       }
     }
-  def broadcaster[Msg](topicType: Topic[Msg]): Broadcaster[Msg]   =
+  def broadcaster[Msg](topicType: TopicType[Msg]): Broadcaster[Msg] =
     new Broadcaster[Msg] {
       def broadcast(topic: String)(msg: Msg): UIO[Unit] =
         sendMessage(topic, msg).timeout(config.sendTimeout).provideLayer(Clock.live).forkDaemon.unit
@@ -300,22 +300,21 @@ class Sharding private (
     entityType: EntityType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
-  ): ZManaged[Clock with R, Nothing, Unit] = registerRecipient(entityType, behavior, terminateMessage, isTopic = false)
+  ): ZManaged[Clock with R, Nothing, Unit] = registerRecipient(entityType, behavior, terminateMessage)
 
   private def registerTopic[R, Req: Tag](
-    topic: Topic[Req],
+    topic: TopicType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
-  ): ZManaged[Clock with R, Nothing, Unit] = registerRecipient(topic, behavior, terminateMessage, isTopic = true)
+  ): ZManaged[Clock with R, Nothing, Unit] = registerRecipient(topic, behavior, terminateMessage)
 
-  private def registerRecipient[R, Req: Tag](
+  def registerRecipient[R, Req: Tag](
     entityType: RecipientType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
-    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
-    isTopic: Boolean
+    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
   ): ZManaged[Clock with R, Nothing, Unit] =
     for {
-      entityManager <- EntityManager.make(behavior, terminateMessage, self, config, isTopic).toManaged_
+      entityManager <- EntityManager.make(entityType, behavior, terminateMessage, self, config).toManaged_
       binaryQueue   <- Queue.unbounded[(BinaryMessage, Promise[Throwable, Option[Array[Byte]]])].toManaged(_.shutdown)
       _             <- entityStates.update(_.updated(entityType.name, EntityState(binaryQueue, entityManager))).toManaged_
       _             <- ZStream
@@ -438,7 +437,7 @@ object Sharding {
     } yield ()
 
   def registerTopic[R, Req: Tag](
-    topic: Topic[Req],
+    topic: TopicType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
   ): ZManaged[Has[Sharding] with R with Clock, Nothing, Unit] =
@@ -456,7 +455,7 @@ object Sharding {
   /**
    * Get an object that allows broadcasting messages to a given topic.
    */
-  def broadcaster[Msg](topicType: Topic[Msg]): URIO[Has[Sharding], Broadcaster[Msg]] =
+  def broadcaster[Msg](topicType: TopicType[Msg]): URIO[Has[Sharding], Broadcaster[Msg]] =
     ZIO.service[Sharding].map(_.broadcaster(topicType))
 
   /**
