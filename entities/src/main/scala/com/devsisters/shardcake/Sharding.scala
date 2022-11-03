@@ -1,6 +1,6 @@
 package com.devsisters.shardcake
 
-import com.devsisters.shardcake.Sharding.EntityState
+import com.devsisters.shardcake.Sharding.{ EntityState, ShardingRegistrationEvent }
 import com.devsisters.shardcake.errors.{ EntityNotManagedByThisPod, PodUnavailable, SendTimeoutException }
 import com.devsisters.shardcake.interfaces.Pods.BinaryMessage
 import com.devsisters.shardcake.interfaces.{ Pods, Serialization, Storage }
@@ -27,7 +27,8 @@ class Sharding private (
   shardManager: ShardManagerClient,
   pods: Pods,
   storage: Storage,
-  serialization: Serialization
+  serialization: Serialization,
+  eventsHub: Hub[ShardingRegistrationEvent]
 ) { self =>
   private[shardcake] def getShardId(recipientType: RecipientType[_], entityId: String): ShardId =
     recipientType.getShardId(entityId, config.numberOfShards)
@@ -76,7 +77,8 @@ class Sharding private (
       .unit
 
   def registerSingleton(name: String, run: UIO[Nothing]): UIO[Unit] =
-    singletons.update(list => (name, run, None) :: list) *> startSingletonsIfNeeded
+    singletons.update(list => (name, run, None) :: list) *> startSingletonsIfNeeded *>
+      eventsHub.publish(ShardingRegistrationEvent.SingletonRegistered(name)).unit
 
   private[shardcake] def assign(shards: Set[ShardId]): UIO[Unit] =
     ZIO
@@ -307,13 +309,18 @@ class Sharding private (
     entityType: EntityType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
-  ): URIO[Scope with R, Unit] = registerRecipient(entityType, behavior, terminateMessage)
+  ): URIO[Scope with R, Unit] = registerRecipient(entityType, behavior, terminateMessage) *>
+    eventsHub.publish(ShardingRegistrationEvent.EntityRegistered(entityType)).unit
 
   def registerTopic[R, Req: Tag](
     topicType: TopicType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
-  ): URIO[Scope with R, Unit] = registerRecipient(topicType, behavior, terminateMessage)
+  ): URIO[Scope with R, Unit] = registerRecipient(topicType, behavior, terminateMessage) *>
+    eventsHub.publish(ShardingRegistrationEvent.TopicRegistered(topicType)).unit
+
+  def getShardingRegistrationEvents: ZStream[Any, Nothing, ShardingRegistrationEvent] =
+    ZStream.fromHub(eventsHub)
 
   def registerRecipient[R, Req: Tag](
     recipientType: RecipientType[Req],
@@ -345,6 +352,23 @@ class Sharding private (
 }
 
 object Sharding {
+
+  sealed trait ShardingRegistrationEvent
+
+  object ShardingRegistrationEvent {
+    case class EntityRegistered(entityType: EntityType[_]) extends ShardingRegistrationEvent {
+      override def toString: String = s"Registered entity ${entityType.name}"
+    }
+    case class SingletonRegistered(name: String)           extends ShardingRegistrationEvent {
+      override def toString: String = s"Registered singleton $name"
+    }
+    case class TopicRegistered(topicType: TopicType[_])    extends ShardingRegistrationEvent {
+
+      override def toString: String = s"Registered topic ${topicType.name}"
+
+    }
+  }
+
   private[shardcake] case class EntityState(
     binaryQueue: Queue[(BinaryMessage, Promise[Throwable, Option[Array[Byte]]])],
     entityManager: EntityManager[Nothing]
@@ -377,6 +401,7 @@ object Sharding {
         cdt                       <- Clock.currentDateTime
         lastUnhealthyNodeReported <- Ref.make(cdt)
         shuttingDown              <- Ref.make(false)
+        eventsHub                 <- Hub.unbounded[ShardingRegistrationEvent]
         sharding                   = new Sharding(
                                        PodAddress(config.selfHost, config.shardingPort),
                                        config,
@@ -389,8 +414,10 @@ object Sharding {
                                        shardManager,
                                        pods,
                                        storage,
-                                       serialization
+                                       serialization,
+                                       eventsHub
                                      )
+        _                         <- sharding.getShardingRegistrationEvents.mapZIO(event => ZIO.logInfo(event.toString)).runDrain.forkDaemon
         _                         <- sharding.refreshAssignments
       } yield sharding
     }
