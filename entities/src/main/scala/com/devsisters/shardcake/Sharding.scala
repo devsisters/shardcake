@@ -154,22 +154,20 @@ class Sharding private (
       states.get(msg.entityType) match {
         case Some(state) =>
           for {
-            p      <- Promise.make[Throwable, Option[Array[Byte]]]
-            _      <- state.binaryQueue.offer((msg, p))
-            result <- p.await
+            p           <- Promise.make[Throwable, Option[Array[Byte]]]
+            interruptor <- Promise.make[Nothing, Unit]
+            _           <- state.binaryQueue.offer((msg, p, interruptor))
+            result      <- p.await.onError(_ => interruptor.interrupt)
           } yield result
 
         case None => ZIO.fail(new Exception(s"Entity type ${msg.entityType} was not registered."))
       }
     )
 
-  private[shardcake] def initReply(id: String, promise: Promise[Throwable, Option[Any]], context: String): UIO[Unit] =
+  private[shardcake] def initReply(id: String, promise: Promise[Throwable, Option[Any]]): UIO[Unit] =
     replyPromises.update(p => ZIO.succeed(p.updated(id, promise))) <*
       promise.await
-        // timeout slightly > send timeout
-        .timeoutFail(new Exception(s"Promise was not completed in time. $context"))(config.sendTimeout.plusSeconds(1))
         .onError(cause => abortReply(id, cause.squash))
-        .provideLayer(Clock.live)
         .forkDaemon
 
   private def abortReply(id: String, ex: Throwable): UIO[Unit] =
@@ -202,10 +200,10 @@ class Sharding private (
           entityStates.get.flatMap(
             _.get(recipientTypeName) match {
               case Some(state) =>
-                state.entityManager
+                (state.entityManager
                   .asInstanceOf[EntityManager[Msg]]
                   .send(entityId, msg, replyId, p) *>
-                  p.await.map(_.asInstanceOf[Option[Res]])
+                  p.await.map(_.asInstanceOf[Option[Res]])).onError(_ => p.interrupt)
 
               case None =>
                 ZIO.fail(new Exception(s"Entity type $recipientTypeName was not registered."))
@@ -241,10 +239,16 @@ class Sharding private (
         )
     }
 
-  def messenger[Msg](entityType: EntityType[Msg]): Messenger[Msg] =
+  def messenger[Msg](entityType: EntityType[Msg], sendTimeout: Option[Duration] = None): Messenger[Msg] =
     new Messenger[Msg] {
+      val timeout: Duration = sendTimeout.getOrElse(config.sendTimeout)
+
       def sendDiscard(entityId: String)(msg: Msg): UIO[Unit] =
-        sendMessage(entityId, msg, None).timeout(config.sendTimeout).provideLayer(Clock.live).forkDaemon.unit
+        sendMessage(entityId, msg, None)
+          .timeout(timeout)
+          .provideLayer(Clock.live)
+          .forkDaemon
+          .unit
 
       def send[Res](entityId: String)(msg: Replier[Res] => Msg): Task[Res] =
         random.nextUUID.flatMap { uuid =>
@@ -253,7 +257,7 @@ class Sharding private (
             case Some(value) => ZIO.succeed(value)
             case None        => ZIO.fail(new Exception(s"Send returned nothing, entityId=$entityId, body=$body"))
           }
-            .timeoutFail(SendTimeoutException(entityType, entityId, body))(config.sendTimeout)
+            .timeoutFail(SendTimeoutException(entityType, entityId, body))(timeout)
             .provideLayer(Clock.live)
             .interruptible
         }
@@ -280,10 +284,16 @@ class Sharding private (
       }
     }
 
-  def broadcaster[Msg](topicType: TopicType[Msg]): Broadcaster[Msg] =
+  def broadcaster[Msg](topicType: TopicType[Msg], sendTimeout: Option[Duration] = None): Broadcaster[Msg] =
     new Broadcaster[Msg] {
+      val timeout: Duration = sendTimeout.getOrElse(config.sendTimeout)
+
       def broadcastDiscard(topic: String)(msg: Msg): UIO[Unit] =
-        sendMessage(topic, msg, None).timeout(config.sendTimeout).provideLayer(Clock.live).forkDaemon.unit
+        sendMessage(topic, msg, None)
+          .timeout(timeout)
+          .provideLayer(Clock.live)
+          .forkDaemon
+          .unit
 
       def broadcast[Res](topic: String)(msg: Replier[Res] => Msg): UIO[Map[PodAddress, Try[Res]]] =
         random.nextUUID.flatMap { uuid =>
@@ -304,7 +314,7 @@ class Sharding private (
                         case Some(value) => ZIO.succeed(value)
                         case None        => ZIO.fail(new Exception(s"Send returned nothing, topic=$topic"))
                       }
-                        .timeoutFail(new Exception(s"Send timed out, topic=$topic"))(config.sendTimeout)
+                        .timeoutFail(new Exception(s"Send timed out, topic=$topic"))(timeout)
                         .either
                         .map(pod -> _.toTry)
                     }
@@ -337,22 +347,23 @@ class Sharding private (
   ): ZManaged[Clock with R, Nothing, Unit] =
     for {
       entityManager <- EntityManager.make(recipientType, behavior, terminateMessage, self, config).toManaged_
-      binaryQueue   <- Queue.unbounded[(BinaryMessage, Promise[Throwable, Option[Array[Byte]]])].toManaged(_.shutdown)
+      binaryQueue   <- Queue
+                         .unbounded[(BinaryMessage, Promise[Throwable, Option[Array[Byte]]], Promise[Nothing, Unit])]
+                         .toManaged(_.shutdown)
       _             <- entityStates.update(_.updated(recipientType.name, EntityState(binaryQueue, entityManager))).toManaged_
       _             <- ZStream
                          .fromQueue(binaryQueue)
-                         .mapM { case (msg, p) =>
-                           (for {
+                         .mapM { case (msg, p, interruptor) =>
+                           ((for {
                              req       <- serialization.decode[Req](msg.body)
                              p2        <- Promise.make[Throwable, Option[Any]]
-                             _         <- entityManager.send(msg.entityId, req, msg.replyId, p2)
-                             resOption <- p2.await
+                             resOption <- (entityManager.send(msg.entityId, req, msg.replyId, p2) *> p2.await)
+                                            .onError(_ => p2.interrupt)
                              res       <- ZIO.foreach(resOption)(serialization.encode)
                              _         <- p.succeed(res)
                            } yield ())
-                             .catchAllCause((cause: Cause[Throwable]) => p.fail(cause.squash))
-                             .fork
-                             .unit
+                             .catchAllCause((cause: Cause[Throwable]) => p.fail(cause.squash)) raceFirst
+                             interruptor.await).fork.unit
                          }
                          .runDrain
                          .forkManaged
@@ -371,14 +382,12 @@ object Sharding {
       override def toString: String = s"Registered singleton $name"
     }
     case class TopicRegistered(topicType: TopicType[_])    extends ShardingRegistrationEvent {
-
       override def toString: String = s"Registered topic ${topicType.name}"
-
     }
   }
 
   private[shardcake] case class EntityState(
-    binaryQueue: Queue[(BinaryMessage, Promise[Throwable, Option[Array[Byte]]])],
+    binaryQueue: Queue[(BinaryMessage, Promise[Throwable, Option[Array[Byte]]], Promise[Nothing, Unit])],
     entityManager: EntityManager[Nothing]
   )
 
@@ -500,15 +509,23 @@ object Sharding {
 
   /**
    * Get an object that allows sending messages to a given entity type.
+   * You can provide a custom send timeout to override the one globally defined.
    */
-  def messenger[Msg](entityType: EntityType[Msg]): URIO[Has[Sharding], Messenger[Msg]] =
-    ZIO.service[Sharding].map(_.messenger(entityType))
+  def messenger[Msg](
+    entityType: EntityType[Msg],
+    sendTimeout: Option[Duration] = None
+  ): URIO[Has[Sharding], Messenger[Msg]] =
+    ZIO.service[Sharding].map(_.messenger(entityType, sendTimeout))
 
   /**
    * Get an object that allows broadcasting messages to a given topic type.
+   * You can provide a custom send timeout to override the one globally defined.
    */
-  def broadcaster[Msg](topicType: TopicType[Msg]): URIO[Has[Sharding], Broadcaster[Msg]] =
-    ZIO.service[Sharding].map(_.broadcaster(topicType))
+  def broadcaster[Msg](
+    topicType: TopicType[Msg],
+    sendTimeout: Option[Duration] = None
+  ): URIO[Has[Sharding], Broadcaster[Msg]] =
+    ZIO.service[Sharding].map(_.broadcaster(topicType, sendTimeout))
 
   /**
    * Get the list of pods currently registered to the Shard Manager
