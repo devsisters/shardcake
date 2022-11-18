@@ -367,9 +367,7 @@ object Sharding {
       override def toString: String = s"Registered singleton $name"
     }
     case class TopicRegistered(topicType: TopicType[_])    extends ShardingRegistrationEvent {
-
       override def toString: String = s"Registered topic ${topicType.name}"
-
     }
   }
 
