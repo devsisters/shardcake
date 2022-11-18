@@ -124,8 +124,7 @@ private[shardcake] object EntityManager {
                    case Some(queue) =>
                      // add the message to the queue and setup the response promise if needed
                      (replyId match {
-                       case Some(replyId) =>
-                         sharding.initReply(replyId, promise, s"entityId: $entityId, req: $req") *> queue.offer(req)
+                       case Some(replyId) => sharding.initReply(replyId, promise) *> queue.offer(req)
                        case None          => queue.offer(req) *> promise.succeed(None)
                      }).catchAllCause(_ => send(entityId, req, replyId, promise))
                  }
