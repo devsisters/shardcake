@@ -347,7 +347,8 @@ class Sharding private (
                              res       <- ZIO.foreach(resOption)(serialization.encode)
                              _         <- p.succeed(res)
                            } yield ())
-                             .catchAllCause((cause: Cause[Throwable]) => p.fail(cause.squash)) race interruptor.await).fork.unit
+                             .catchAllCause((cause: Cause[Throwable]) => p.fail(cause.squash)) raceFirst
+                             interruptor.await).fork.unit
                          }
                          .runDrain
                          .forkScoped
