@@ -29,7 +29,8 @@ case class Config(
   sendTimeout: Duration,
   refreshAssignmentsRetryInterval: Duration,
   unhealthyPodReportInterval: Duration,
-  simulateRemotePods: Boolean
+  simulateRemotePods: Boolean,
+  entityMaxIdleTimes : Map[String,Duration]
 )
 
 object Config {
@@ -44,6 +45,7 @@ object Config {
     sendTimeout = 10 seconds,
     refreshAssignmentsRetryInterval = 5 seconds,
     unhealthyPodReportInterval = 5 seconds,
-    simulateRemotePods = false
+    simulateRemotePods = false,
+    entityMaxIdleTimes = Map.empty
   )
 }
