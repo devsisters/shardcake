@@ -22,7 +22,7 @@ private[shardcake] object EntityManager {
     terminateMessage: Promise[Nothing, Unit] => Option[Req],
     sharding: Sharding,
     config: Config,
-    entityMaxIdleTime  :Option[Duration]
+    entityMaxIdleTime: Option[Duration]
   ): URIO[R, EntityManager[Req]] =
     for {
       entities <- Ref.Synchronized.make[Map[String, (Option[Queue[Req]], Fiber[Nothing, Unit])]](Map())
@@ -44,11 +44,11 @@ private[shardcake] object EntityManager {
     entities: Ref.Synchronized[Map[String, (Option[Queue[Req]], Fiber[Nothing, Unit])]],
     sharding: Sharding,
     config: Config,
-    entityMaxIdleTime  :Option[Duration]
+    entityMaxIdleTime: Option[Duration]
   ) extends EntityManager[Req] {
     private def startExpirationFiber(entityId: String): UIO[Fiber[Nothing, Unit]] =
       (for {
-        _ <- Clock.sleep(entityMaxIdleTime orElse config.entityMaxIdleTimes.get(recipientType.name) getOrElse config.entityMaxIdleTime)
+        _ <- Clock.sleep(entityMaxIdleTime getOrElse config.entityMaxIdleTime)
         _ <- terminateEntity(entityId).forkDaemon.unit // fork daemon otherwise it will interrupt itself
       } yield ()).forkDaemon
 

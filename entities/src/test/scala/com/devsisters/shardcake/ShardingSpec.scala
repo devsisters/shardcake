@@ -30,14 +30,14 @@ object ShardingSpec extends ZIOSpecDefault {
       test("Entity termination") {
         ZIO.scoped {
           for {
-            _       <- Sharding.registerEntity(Counter, behavior, entityMaxIdleTime=Some(1.seconds))
+            _       <- Sharding.registerEntity(Counter, behavior, entityMaxIdleTime = Some(1.seconds))
             _       <- Sharding.registerScoped
             counter <- Sharding.messenger(Counter)
             _       <- counter.sendDiscard("c3")(IncrementCounter)
-            c0       <- counter.send("c3")(GetCounter.apply)
+            c0      <- counter.send("c3")(GetCounter.apply)
             _       <- Clock.sleep(3 seconds)
-            c1       <- counter.send("c3")(GetCounter.apply) // counter should be restarted
-          } yield assertTrue(c0 == 1, c1==0)
+            c1 <- counter.send("c3")(GetCounter.apply) // counter should be restarted
+          } yield assertTrue(c0 == 1, c1 == 0)
         }
       },
       test("Cluster singleton") {

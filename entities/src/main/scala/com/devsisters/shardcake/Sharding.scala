@@ -312,7 +312,7 @@ class Sharding private (
     entityType: EntityType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
-    entityMaxIdleTime  :Option[Duration] = None
+    entityMaxIdleTime: Option[Duration] = None
   ): URIO[Scope with R, Unit] = registerRecipient(entityType, behavior, terminateMessage, entityMaxIdleTime) *>
     eventsHub.publish(ShardingRegistrationEvent.EntityRegistered(entityType)).unit
 
@@ -320,7 +320,7 @@ class Sharding private (
     topicType: TopicType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
-  ): URIO[Scope with R, Unit] = registerRecipient(topicType, behavior, terminateMessage, Some(Duration.Infinity)) *>
+  ): URIO[Scope with R, Unit] = registerRecipient(topicType, behavior, terminateMessage) *>
     eventsHub.publish(ShardingRegistrationEvent.TopicRegistered(topicType)).unit
 
   def getShardingRegistrationEvents: ZStream[Any, Nothing, ShardingRegistrationEvent] =
@@ -330,7 +330,7 @@ class Sharding private (
     recipientType: RecipientType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
-    entityMaxIdleTime  :Option[Duration] = None
+    entityMaxIdleTime: Option[Duration] = None
   ): URIO[Scope with R, Unit] =
     for {
       entityManager <- EntityManager.make(recipientType, behavior, terminateMessage, self, config, entityMaxIdleTime)
@@ -461,7 +461,7 @@ object Sharding {
     entityType: EntityType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
-    entityMaxIdleTime  :Option[Duration] = None
+    entityMaxIdleTime: Option[Duration] = None
   ): URIO[Sharding with Scope with R, Unit] =
     ZIO.serviceWithZIO[Sharding](_.registerEntity[R, Req](entityType, behavior, terminateMessage, entityMaxIdleTime))
 
