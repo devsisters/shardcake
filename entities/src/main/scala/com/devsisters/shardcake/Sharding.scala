@@ -243,11 +243,10 @@ class Sharding private (
     new Messenger[Msg] {
       val timeout: Duration = sendTimeout.getOrElse(config.sendTimeout)
 
-      def sendDiscard(entityId: String)(msg: Msg): UIO[Unit] =
+      def sendDiscard(entityId: String)(msg: Msg): Task[Unit] =
         sendMessage(entityId, msg, None)
           .timeout(timeout)
           .provideLayer(Clock.live)
-          .forkDaemon
           .unit
 
       def send[Res](entityId: String)(msg: Replier[Res] => Msg): Task[Res] =
@@ -292,7 +291,6 @@ class Sharding private (
         sendMessage(topic, msg, None)
           .timeout(timeout)
           .provideLayer(Clock.live)
-          .forkDaemon
           .unit
 
       def broadcast[Res](topic: String)(msg: Replier[Res] => Msg): UIO[Map[PodAddress, Try[Res]]] =
