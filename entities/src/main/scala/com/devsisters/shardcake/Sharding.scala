@@ -239,8 +239,8 @@ class Sharding private (
     new Messenger[Msg] {
       val timeout: Duration = sendTimeout.getOrElse(config.sendTimeout)
 
-      def sendDiscard(entityId: String)(msg: Msg): UIO[Unit] =
-        sendMessage(entityId, msg, None).timeout(timeout).forkDaemon.unit
+      def sendDiscard(entityId: String)(msg: Msg): Task[Unit] =
+        sendMessage(entityId, msg, None).timeout(timeout).unit
 
       def send[Res](entityId: String)(msg: Replier[Res] => Msg): Task[Res] =
         Random.nextUUID.flatMap { uuid =>
@@ -280,7 +280,7 @@ class Sharding private (
       val timeout: Duration = sendTimeout.getOrElse(config.sendTimeout)
 
       def broadcastDiscard(topic: String)(msg: Msg): UIO[Unit] =
-        sendMessage(topic, msg, None).timeout(timeout).forkDaemon.unit
+        sendMessage(topic, msg, None).timeout(timeout).unit
 
       def broadcast[Res](topic: String)(msg: Replier[Res] => Msg): UIO[Map[PodAddress, Try[Res]]] =
         Random.nextUUID.flatMap { uuid =>
