@@ -11,7 +11,7 @@ trait Messenger[-Msg] {
   /**
    * Send a message without waiting for a response (fire and forget)
    */
-  def sendDiscard(entityId: String)(msg: Msg): UIO[Unit]
+  def sendDiscard(entityId: String)(msg: Msg): Task[Unit]
 
   /**
    * Send a message and wait for a response of type `Res`
