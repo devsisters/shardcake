@@ -323,9 +323,10 @@ class Sharding private (
   private def registerEntity[R, Req: Tag](
     entityType: EntityType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
-    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
+    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
+    entityMaxIdleTime: Option[Duration] = None
   ): ZManaged[Clock with R, Nothing, Unit] =
-    registerRecipient(entityType, behavior, terminateMessage) *>
+    registerRecipient(entityType, behavior, terminateMessage, entityMaxIdleTime) *>
       eventsHub.publish(ShardingRegistrationEvent.EntityRegistered(entityType)).unit.toManaged_
 
   private def registerTopic[R, Req: Tag](
@@ -341,10 +342,12 @@ class Sharding private (
   def registerRecipient[R, Req: Tag](
     recipientType: RecipientType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
-    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
+    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
+    entityMaxIdleTime: Option[Duration] = None
   ): ZManaged[Clock with R, Nothing, Unit] =
     for {
-      entityManager <- EntityManager.make(recipientType, behavior, terminateMessage, self, config).toManaged_
+      entityManager <-
+        EntityManager.make(recipientType, behavior, terminateMessage, self, config, entityMaxIdleTime).toManaged_
       binaryQueue   <- Queue
                          .unbounded[(BinaryMessage, Promise[Throwable, Option[Array[Byte]]], Promise[Nothing, Unit])]
                          .toManaged(_.shutdown)
@@ -482,11 +485,12 @@ object Sharding {
   def registerEntity[R, Req: Tag](
     entityType: EntityType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
-    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
+    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
+    entityMaxIdleTime: Option[Duration] = None
   ): ZManaged[Has[Sharding] with R with Clock, Nothing, Unit] =
     for {
       sharding <- ZIO.service[Sharding].toManaged_
-      _        <- sharding.registerEntity[R, Req](entityType, behavior, terminateMessage)
+      _        <- sharding.registerEntity[R, Req](entityType, behavior, terminateMessage, entityMaxIdleTime)
     } yield ()
 
   /**
