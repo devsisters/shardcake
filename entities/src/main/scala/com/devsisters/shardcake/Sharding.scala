@@ -311,8 +311,9 @@ class Sharding private (
   def registerEntity[R, Req: Tag](
     entityType: EntityType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
-    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
-  ): URIO[Scope with R, Unit] = registerRecipient(entityType, behavior, terminateMessage) *>
+    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
+    entityMaxIdleTime: Option[Duration] = None
+  ): URIO[Scope with R, Unit] = registerRecipient(entityType, behavior, terminateMessage, entityMaxIdleTime) *>
     eventsHub.publish(ShardingRegistrationEvent.EntityRegistered(entityType)).unit
 
   def registerTopic[R, Req: Tag](
@@ -328,10 +329,11 @@ class Sharding private (
   def registerRecipient[R, Req: Tag](
     recipientType: RecipientType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
-    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
+    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
+    entityMaxIdleTime: Option[Duration] = None
   ): URIO[Scope with R, Unit] =
     for {
-      entityManager <- EntityManager.make(recipientType, behavior, terminateMessage, self, config)
+      entityManager <- EntityManager.make(recipientType, behavior, terminateMessage, self, config, entityMaxIdleTime)
       binaryQueue   <- Queue
                          .unbounded[(BinaryMessage, Promise[Throwable, Option[Array[Byte]]], Promise[Nothing, Unit])]
                          .withFinalizer(_.shutdown)
@@ -458,9 +460,10 @@ object Sharding {
   def registerEntity[R, Req: Tag](
     entityType: EntityType[Req],
     behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
-    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
+    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
+    entityMaxIdleTime: Option[Duration] = None
   ): URIO[Sharding with Scope with R, Unit] =
-    ZIO.serviceWithZIO[Sharding](_.registerEntity[R, Req](entityType, behavior, terminateMessage))
+    ZIO.serviceWithZIO[Sharding](_.registerEntity[R, Req](entityType, behavior, terminateMessage, entityMaxIdleTime))
 
   /**
    * Register a new topic type, allowing pods to broadcast messages to subscribers.
