@@ -1,6 +1,7 @@
 package example.simple
 
 import com.devsisters.shardcake.{ EntityType, Replier, Sharding }
+import zio.stream.ZStream
 import zio.{ Dequeue, RIO, Ref, ZIO }
 
 import scala.util.{ Failure, Success, Try }
@@ -12,6 +13,7 @@ object GuildBehavior {
     case class Join(userId: String, replier: Replier[Try[Set[String]]]) extends GuildMessage
     case class Timeout(replier: Replier[Try[Set[String]]])              extends GuildMessage
     case class Leave(userId: String)                                    extends GuildMessage
+    case class Stream(replier: Replier[String])                         extends GuildMessage
   }
 
   object Guild extends EntityType[GuildMessage]("guild")
@@ -36,5 +38,7 @@ object GuildBehavior {
         state.update(_ - userId)
       case GuildMessage.Timeout(_)            =>
         ZIO.unit // simulate a timeout by not responding
+      case GuildMessage.Stream(replier) =>
+        state.get.flatMap(members => replier.replyStream(ZStream.fromIterable(members)))
     }
 }

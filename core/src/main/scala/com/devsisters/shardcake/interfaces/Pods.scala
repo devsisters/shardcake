@@ -2,6 +2,7 @@ package com.devsisters.shardcake.interfaces
 
 import com.devsisters.shardcake.interfaces.Pods.BinaryMessage
 import com.devsisters.shardcake.{ PodAddress, ShardId }
+import zio.stream.ZStream
 import zio.{ Task, ULayer, ZIO, ZLayer }
 
 /**
@@ -30,6 +31,11 @@ trait Pods {
    * Send a message to a pod
    */
   def sendMessage(pod: PodAddress, message: BinaryMessage): Task[Option[Array[Byte]]]
+
+  /**
+   * Send a message to a pod and receive a stream of replies
+   */
+  def sendMessageStreaming(pod: PodAddress, message: BinaryMessage): ZStream[Any, Throwable, Array[Byte]]
 }
 
 object Pods {
@@ -40,10 +46,12 @@ object Pods {
    */
   val noop: ULayer[Pods] =
     ZLayer.succeed(new Pods {
-      def assignShards(pod: PodAddress, shards: Set[ShardId]): Task[Unit]                 = ZIO.unit
-      def unassignShards(pod: PodAddress, shards: Set[ShardId]): Task[Unit]               = ZIO.unit
-      def ping(pod: PodAddress): Task[Unit]                                               = ZIO.unit
-      def sendMessage(pod: PodAddress, message: BinaryMessage): Task[Option[Array[Byte]]] = ZIO.none
+      def assignShards(pod: PodAddress, shards: Set[ShardId]): Task[Unit]                                     = ZIO.unit
+      def unassignShards(pod: PodAddress, shards: Set[ShardId]): Task[Unit]                                   = ZIO.unit
+      def ping(pod: PodAddress): Task[Unit]                                                                   = ZIO.unit
+      def sendMessage(pod: PodAddress, message: BinaryMessage): Task[Option[Array[Byte]]]                     = ZIO.none
+      def sendMessageStreaming(pod: PodAddress, message: BinaryMessage): ZStream[Any, Throwable, Array[Byte]] =
+        ZStream.empty
     })
 
   case class BinaryMessage(entityId: String, entityType: String, body: Array[Byte], replyId: Option[String])

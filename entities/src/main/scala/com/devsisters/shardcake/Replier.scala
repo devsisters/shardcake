@@ -1,10 +1,15 @@
 package com.devsisters.shardcake
 
+import zio.stream.ZStream
 import zio.{ URIO, ZIO }
 
 /**
  * A metadata object that allows sending a response back to the sender
  */
 case class Replier[-R](id: String) { self =>
-  def reply(reply: R): URIO[Sharding, Unit] = ZIO.serviceWithZIO[Sharding](_.reply(reply, self))
+  def reply(reply: R): URIO[Sharding, Unit] =
+    ZIO.serviceWithZIO[Sharding](_.reply(reply, self))
+
+  def replyStream(replies: ZStream[Any, Nothing, R]): URIO[Sharding, Unit] =
+    ZIO.serviceWithZIO[Sharding](_.replyStream(replies, self))
 }

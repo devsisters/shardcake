@@ -1,6 +1,7 @@
 package com.devsisters.shardcake
 
-import zio.{ Task, UIO }
+import zio.Task
+import zio.stream.ZStream
 
 /**
  * An interface to communicate with a remote entity
@@ -17,4 +18,9 @@ trait Messenger[-Msg] {
    * Send a message and wait for a response of type `Res`
    */
   def send[Res](entityId: String)(msg: Replier[Res] => Msg): Task[Res]
+
+  /**
+   * Send a message and receive a stream of responses of type `Res`
+   */
+  def sendStream[Res](entityId: String)(msg: Replier[Res] => Msg): Task[ZStream[Any, Throwable, Res]]
 }

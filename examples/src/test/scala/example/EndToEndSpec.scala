@@ -1,26 +1,26 @@
 package example
 
-import scala.util.Try
-
-import com.devsisters.shardcake._
 import com.devsisters.shardcake.StorageRedis.Redis
+import com.devsisters.shardcake._
 import com.devsisters.shardcake.interfaces.PodsHealth
 import com.dimafeng.testcontainers.GenericContainer
+import dev.profunktor.redis4cats.Redis
 import dev.profunktor.redis4cats.connection.RedisClient
 import dev.profunktor.redis4cats.data.RedisCodec
 import dev.profunktor.redis4cats.effect.Log
 import dev.profunktor.redis4cats.pubsub.PubSub
-import dev.profunktor.redis4cats.Redis
 import example.simple.GuildBehavior
 import example.simple.GuildBehavior.Guild
-import example.simple.GuildBehavior.GuildMessage.{ Join, Timeout }
+import example.simple.GuildBehavior.GuildMessage.{ Join, Stream, Timeout }
 import sttp.client3.UriContext
-import zio._
 import zio.Clock.ClockLive
+import zio._
 import zio.interop.catz._
-import zio.test._
 import zio.test.Assertion._
 import zio.test.TestAspect.{ sequential, withLiveClock }
+import zio.test._
+
+import scala.util.Try
 
 object EndToEndSpec extends ZIOSpecDefault {
 
@@ -86,9 +86,12 @@ object EndToEndSpec extends ZIOSpecDefault {
             _       <- guild.send("guild1")(Join("user4", _))
             members <- guild.send[Try[Set[String]]]("guild1")(Join("user5", _))
             failure <- guild.send[Try[Set[String]]]("guild1")(Join("user6", _))
+            stream  <- guild.sendStream[String]("guild1")(Stream(_))
+            res     <- stream.runCollect
           } yield assert(members)(isSuccess(hasSize(equalTo(5)))) &&
             assertTrue(failure.isFailure) &&
-            assertTrue(timeout.toTry.isFailure)
+            assertTrue(timeout.toTry.isFailure) &&
+            assert(res)(hasSize(equalTo(5)))
         }
       }
     ).provideShared(
