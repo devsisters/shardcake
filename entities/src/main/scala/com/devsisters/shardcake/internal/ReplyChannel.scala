@@ -19,7 +19,7 @@ private[shardcake] object ReplyChannel {
     def replySingle(a: A): UIO[Unit]                               = queue.offer(Take.single(a)) *> end
     def replyStream(stream: ZStream[Any, Throwable, A]): UIO[Unit] =
       (stream.runForeach(a => queue.offer(Take.single(a))) *> end).catchAllCause(fail).fork.unit
-    val output: ZStream[Any, Throwable, A]                         = ZStream.fromQueue(queue).flattenTake
+    val output: ZStream[Any, Throwable, A]                         = ZStream.fromQueue(queue).flattenTake.onError(fail)
   }
 
   case class FromPromise[A](promise: Promise[Throwable, Option[A]]) extends ReplyChannel[A] {
@@ -29,7 +29,7 @@ private[shardcake] object ReplyChannel {
     def replySingle(a: A): UIO[Unit]                               = promise.succeed(Some(a)).unit
     def replyStream(stream: ZStream[Any, Throwable, A]): UIO[Unit] =
       stream.runHead.flatMap(promise.succeed(_)).catchAllCause(fail).fork.unit
-    val output: Task[Option[A]]                                    = promise.await
+    val output: Task[Option[A]]                                    = promise.await.onError(fail)
   }
 
   def single[A]: UIO[FromPromise[A]] =

@@ -206,7 +206,6 @@ class Sharding private (
             state.entityManager
               .asInstanceOf[EntityManager[Msg]]
               .send(entityId, msg, replyId, replyChannel)
-              .onError(replyChannel.fail)
           case None        =>
             ZIO.fail(new Exception(s"Entity type $recipientTypeName was not registered."))
         }
@@ -306,7 +305,7 @@ class Sharding private (
                           sendToPod[Msg, Res](entityType.name, entityId, msg, pod, replyId, replyChannel).catchSome {
                             case _: EntityNotManagedByThisPod | _: PodUnavailable =>
                               Clock.sleep(200.millis) *> trySend
-                          }
+                          }.onError(replyChannel.fail)
                         case None      =>
                           // no shard assignment, retry
                           Clock.sleep(100.millis) *> trySend
@@ -340,7 +339,7 @@ class Sharding private (
                           replyChannel <- ReplyChannel.single[Res]
                           _            <- sendToPod(topicType.name, topic, msg, pod, replyId, replyChannel).catchSome {
                                             case _: PodUnavailable => Clock.sleep(200.millis) *> trySend
-                                          }
+                                          }.onError(replyChannel.fail)
                           res          <- replyChannel.output
                         } yield res
 
