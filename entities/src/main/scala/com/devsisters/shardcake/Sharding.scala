@@ -431,7 +431,7 @@ object Sharding {
                                            }
                                          )
                                        )
-        promises                  <- Ref.Synchronized.make[Map[String, ReplyChannel[Nothing]]](Map())
+        replyChannels             <- Ref.Synchronized.make[Map[String, ReplyChannel[Nothing]]](Map())
         cdt                       <- Clock.currentDateTime
         lastUnhealthyNodeReported <- Ref.make(cdt)
         shuttingDown              <- Ref.make(false)
@@ -442,7 +442,7 @@ object Sharding {
                                        shardsCache,
                                        entityStates,
                                        singletons,
-                                       promises,
+                                       replyChannels,
                                        lastUnhealthyNodeReported,
                                        shuttingDown,
                                        shardManager,
