@@ -164,7 +164,7 @@ class Sharding private (
 
   def sendToLocalEntity(msg: BinaryMessage, replyChannel: ReplyChannel[Nothing]): Task[Unit] =
     entityStates.get.flatMap(_.get(msg.entityType) match {
-      case Some(state) => state.binaryQueue.offer((msg, replyChannel)).unit
+      case Some(state) => state.processBinary(msg, replyChannel).unit
       case None        => ZIO.fail(new Exception(s"Entity type ${msg.entityType} was not registered."))
     })
 
@@ -203,9 +203,7 @@ class Sharding private (
       entityStates.get.flatMap(
         _.get(recipientTypeName) match {
           case Some(state) =>
-            state.entityManager
-              .asInstanceOf[EntityManager[Msg]]
-              .send(entityId, msg, replyId, replyChannel)
+            state.entityManager.asInstanceOf[EntityManager[Msg]].send(entityId, msg, replyId, replyChannel)
           case None        =>
             ZIO.fail(new Exception(s"Entity type $recipientTypeName was not registered."))
         }
@@ -380,21 +378,12 @@ class Sharding private (
   ): URIO[Scope with R, Unit] =
     for {
       entityManager <- EntityManager.make(recipientType, behavior, terminateMessage, self, config, entityMaxIdleTime)
-      binaryQueue   <- Queue
-                         .unbounded[(BinaryMessage, ReplyChannel[Nothing])]
-                         .withFinalizer(_.shutdown)
-      _             <- entityStates.update(_.updated(recipientType.name, EntityState(binaryQueue, entityManager)))
-      _             <- ZStream
-                         .fromQueue(binaryQueue)
-                         .mapZIO { case (msg, p) =>
-                           (serialization
-                             .decode[Req](msg.body)
-                             .flatMap(req => entityManager.send(msg.entityId, req, msg.replyId, p))
-                             .catchAllCause((cause: Cause[Throwable]) => p.fail(cause))
-                             raceFirst p.await).fork.unit
-                         }
-                         .runDrain
-                         .forkScoped
+      processBinary  = (msg: BinaryMessage, replyChannel: ReplyChannel[Nothing]) =>
+                         serialization
+                           .decode[Req](msg.body)
+                           .flatMap(entityManager.send(msg.entityId, _, msg.replyId, replyChannel))
+                           .catchAllCause(replyChannel.fail)
+      _             <- entityStates.update(_.updated(recipientType.name, EntityState(entityManager, processBinary)))
     } yield ()
 }
 
@@ -415,8 +404,8 @@ object Sharding {
   }
 
   private[shardcake] case class EntityState(
-    binaryQueue: Queue[(BinaryMessage, ReplyChannel[Nothing])],
-    entityManager: EntityManager[Nothing]
+    entityManager: EntityManager[Nothing],
+    processBinary: (BinaryMessage, ReplyChannel[Nothing]) => UIO[Unit]
   )
 
   /**
