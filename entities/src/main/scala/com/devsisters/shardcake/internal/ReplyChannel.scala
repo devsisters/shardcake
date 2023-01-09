@@ -14,12 +14,12 @@ private[shardcake] sealed trait ReplyChannel[-A] { self =>
 private[shardcake] object ReplyChannel {
   case class FromQueue[A](queue: Queue[Take[Throwable, A]]) extends ReplyChannel[A] {
     val await: UIO[Unit]                                           = queue.awaitShutdown
-    val end: UIO[Unit]                                             = queue.offer(Take.end).unit
-    def fail(cause: Cause[Throwable]): UIO[Unit]                   = queue.offer(Take.failCause(cause)).unit
-    def replySingle(a: A): UIO[Unit]                               = queue.offer(Take.single(a)) *> end
+    val end: UIO[Unit]                                             = queue.offer(Take.end).exit.unit
+    def fail(cause: Cause[Throwable]): UIO[Unit]                   = queue.offer(Take.failCause(cause)).exit.unit
+    def replySingle(a: A): UIO[Unit]                               = queue.offer(Take.single(a)).exit *> end
     def replyStream(stream: ZStream[Any, Throwable, A]): UIO[Unit] =
       (stream.runForeach(a => queue.offer(Take.single(a))) *> end).catchAllCause(fail).fork.unit
-    val output: ZStream[Any, Throwable, A]                         = ZStream.fromQueue(queue).flattenTake.onError(fail)
+    val output: ZStream[Any, Throwable, A]                         = ZStream.fromQueueWithShutdown(queue).flattenTake.onError(fail)
   }
 
   case class FromPromise[A](promise: Promise[Throwable, Option[A]]) extends ReplyChannel[A] {
