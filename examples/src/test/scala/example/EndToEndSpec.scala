@@ -15,7 +15,7 @@ import example.simple.GuildBehavior
 import example.simple.GuildBehavior.Guild
 import example.simple.GuildBehavior.GuildMessage.{ Join, Timeout }
 import sttp.client3.UriContext
-import zio._
+import zio.{ Config => _, _ }
 import zio.Clock.ClockLive
 import zio.interop.catz._
 import zio.test._

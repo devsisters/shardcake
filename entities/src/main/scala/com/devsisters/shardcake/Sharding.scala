@@ -5,7 +5,7 @@ import com.devsisters.shardcake.errors.{ EntityNotManagedByThisPod, PodUnavailab
 import com.devsisters.shardcake.interfaces.Pods.BinaryMessage
 import com.devsisters.shardcake.interfaces.{ Pods, Serialization, Storage }
 import com.devsisters.shardcake.internal.EntityManager
-import zio._
+import zio.{ Config => _, _ }
 import zio.stream.ZStream
 
 import java.time.OffsetDateTime

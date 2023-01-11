@@ -4,7 +4,7 @@ import com.devsisters.shardcake._
 import com.devsisters.shardcake.interfaces._
 import example.simple.GuildBehavior._
 import example.simple.GuildBehavior.GuildMessage.Join
-import zio._
+import zio.{ Config => _, _ }
 
 object GuildApp extends ZIOAppDefault {
   val program =

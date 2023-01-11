@@ -5,7 +5,7 @@ import com.devsisters.shardcake.interfaces.Serialization
 import dev.profunktor.redis4cats.RedisCommands
 import example.complex.GuildBehavior.GuildMessage.{ Join, Terminate }
 import example.complex.GuildBehavior._
-import zio._
+import zio.{ Config => _, _ }
 
 object GuildApp extends ZIOAppDefault {
   val config: ZLayer[Any, SecurityException, Config] =
