@@ -2,15 +2,15 @@ package com.devsisters.shardcake
 
 import com.devsisters.shardcake.errors.EntityNotManagedByThisPod
 import com.devsisters.shardcake.interfaces.Pods.BinaryMessage
-import com.devsisters.shardcake.protobuf.sharding.ZioSharding.ZShardingService
+import com.devsisters.shardcake.protobuf.sharding.ZioSharding.ShardingService
 import com.devsisters.shardcake.protobuf.sharding._
 import com.google.protobuf.ByteString
 import io.grpc.protobuf.services.ProtoReflectionService
 import io.grpc.{ ServerBuilder, Status, StatusException, StatusRuntimeException }
-import scalapb.zio_grpc.{ ScopedServer, ServerLayer, ServiceList }
+import scalapb.zio_grpc.{ ScopedServer, ServiceList }
 import zio.{ Config => _, _ }
 
-abstract class GrpcShardingService(sharding: Sharding, timeout: Duration) extends ZShardingService[Any] {
+abstract class GrpcShardingService(sharding: Sharding, timeout: Duration) extends ShardingService {
   def assignShards(request: AssignShardsRequest): ZIO[Any, Status, AssignShardsResponse] =
     sharding.assign(request.shards.toSet).as(AssignShardsResponse())
 
