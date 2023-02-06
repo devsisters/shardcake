@@ -12,9 +12,9 @@ import zio._
 
 class GrpcPods(
   config: GrpcConfig,
-  connections: Ref.Synchronized[Map[PodAddress, (ShardingServiceClient.ZService[Any], Fiber[Throwable, Nothing])]]
+  connections: Ref.Synchronized[Map[PodAddress, (ShardingServiceClient, Fiber[Throwable, Nothing])]]
 ) extends Pods {
-  private def getConnection(pod: PodAddress): Task[ShardingServiceClient.ZService[Any]] =
+  private def getConnection(pod: PodAddress): Task[ShardingServiceClient] =
     // optimize happy path and only get first
     connections.get.flatMap(_.get(pod) match {
       case Some((channel, _)) => ZIO.succeed(channel)
@@ -34,7 +34,7 @@ class GrpcPods(
               // create a fiber that never ends and keeps the connection alive
               for {
                 _          <- ZIO.logDebug(s"Opening connection to pod $pod")
-                promise    <- Promise.make[Nothing, ShardingServiceClient.ZService[Any]]
+                promise    <- Promise.make[Nothing, ShardingServiceClient]
                 fiber      <-
                   ZIO
                     .scoped(
@@ -93,7 +93,7 @@ object GrpcPods {
         config      <- ZIO.service[GrpcConfig]
         connections <-
           Ref.Synchronized
-            .make(Map.empty[PodAddress, (ShardingServiceClient.ZService[Any], Fiber[Throwable, Nothing])])
+            .make(Map.empty[PodAddress, (ShardingServiceClient, Fiber[Throwable, Nothing])])
             .withFinalizer(
               // stop all connection fibers on release
               _.get.flatMap(connections => ZIO.foreachDiscard(connections) { case (_, (_, fiber)) => fiber.interrupt })
