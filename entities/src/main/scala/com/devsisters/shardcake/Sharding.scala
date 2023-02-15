@@ -213,8 +213,8 @@ class Sharding private (
     } else {
       serialization
         .encode(msg)
-        .flatMap(bytes =>
-          pods
+        .flatMap { bytes =>
+          val send = pods
             .sendMessage(pod, BinaryMessage(entityId, recipientTypeName, bytes, replyId))
             .tapError {
               ZIO.whenCase(_) { case PodUnavailable(pod) =>
@@ -236,7 +236,12 @@ class Sharding private (
               }
             }
             .flatMap(ZIO.foreach(_)(serialization.decode[Res]))
-        )
+
+          // retry here to prevent re-serializing messages
+          send.catchSome { case _: EntityNotManagedByThisPod | _: PodUnavailable =>
+            clock.sleep(200.millis) *> send
+          }
+        }
     }
 
   def messenger[Msg](entityType: EntityType[Msg], sendTimeout: Option[Duration] = None): Messenger[Msg] =
@@ -269,9 +274,9 @@ class Sharding private (
             pod       = shards.get(shardId)
             response <- pod match {
                           case Some(pod) =>
-                            val send = sendToPod(entityType.name, entityId, msg, pod, replyId)
-                            send.catchSome { case _: EntityNotManagedByThisPod | _: PodUnavailable =>
-                              clock.sleep(200.millis) *> trySend
+                            sendToPod[Msg, Res](entityType.name, entityId, msg, pod, replyId).catchSome {
+                              case _: EntityNotManagedByThisPod =>
+                                clock.sleep(200.millis) *> trySend
                             }
                           case None      =>
                             // no shard assignment, retry
@@ -304,11 +309,7 @@ class Sharding private (
           pods <- getPods
           res  <- ZIO
                     .foreachPar(pods.toList) { pod =>
-                      def trySend: Task[Option[Res]] =
-                        sendToPod(topicType.name, topic, msg, pod, replyId).catchSome { case _: PodUnavailable =>
-                          clock.sleep(200.millis) *> trySend
-                        }
-                      trySend.flatMap {
+                      sendToPod[Msg, Res](topicType.name, topic, msg, pod, replyId).flatMap {
                         case Some(value) => ZIO.succeed(value)
                         case None        => ZIO.fail(new Exception(s"Send returned nothing, topic=$topic"))
                       }
