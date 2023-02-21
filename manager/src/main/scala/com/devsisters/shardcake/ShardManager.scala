@@ -30,24 +30,33 @@ class ShardManager(
     ZStream.fromHub(eventsHub)
 
   def register(pod: Pod): UIO[Unit] =
-    ZIO.logInfo(s"Registering $pod") *>
-      (stateRef
-        .updateAndGetZIO(state =>
-          ZIO
-            .succeed(OffsetDateTime.now())
-            .map(cdt => state.copy(pods = state.pods.updated(pod.address, PodWithMetadata(pod, cdt))))
-        )
-        .flatMap(state => ZIO.when(state.unassignedShards.nonEmpty)(rebalance(false))) *>
-        persistPods.forkDaemon).unit
+    for {
+      _     <- ZIO.logInfo(s"Registering $pod")
+      state <- stateRef.updateAndGetZIO(state =>
+                 ZIO
+                   .succeed(OffsetDateTime.now())
+                   .map(cdt => state.copy(pods = state.pods.updated(pod.address, PodWithMetadata(pod, cdt))))
+               )
+      _     <- eventsHub.publish(ShardingEvent.PodRegistered(pod.address))
+      _     <- ZIO.when(state.unassignedShards.nonEmpty)(rebalance(false))
+      _     <- persistPods.forkDaemon
+    } yield ()
 
   def notifyUnhealthyPod(podAddress: PodAddress): UIO[Unit] =
     ZIO
       .whenZIO(stateRef.get.map(_.pods.contains(podAddress))) {
-        ZIO.unlessZIO(healthApi.isAlive(podAddress))(
-          ZIO.logWarning(s"$podAddress is not alive, unregistering") *> unregister(podAddress)
-        )
+        eventsHub.publish(ShardingEvent.PodHealthChecked(podAddress)) *>
+          ZIO.unlessZIO(healthApi.isAlive(podAddress))(
+            ZIO.logWarning(s"$podAddress is not alive, unregistering") *> unregister(podAddress)
+          )
       }
       .unit
+
+  def checkAllPodsHealth: UIO[Unit] =
+    for {
+      pods <- stateRef.get.map(_.pods.keySet)
+      _    <- ZIO.foreachParDiscard(pods)(notifyUnhealthyPod).withParallelism(4)
+    } yield ()
 
   def unregister(podAddress: PodAddress): UIO[Unit] =
     ZIO
@@ -64,6 +73,7 @@ class ShardManager(
                                )
                              )
                            }
+          _             <- eventsHub.publish(ShardingEvent.PodUnregistered(podAddress))
           _             <- eventsHub
                              .publish(ShardingEvent.ShardsUnassigned(podAddress, unassignments))
                              .when(unassignments.nonEmpty)
@@ -242,6 +252,9 @@ object ShardManager {
   object ShardingEvent {
     case class ShardsAssigned(pod: PodAddress, shards: Set[ShardId])   extends ShardingEvent
     case class ShardsUnassigned(pod: PodAddress, shards: Set[ShardId]) extends ShardingEvent
+    case class PodRegistered(pod: PodAddress)                          extends ShardingEvent
+    case class PodUnregistered(pod: PodAddress)                        extends ShardingEvent
+    case class PodHealthChecked(pod: PodAddress)                       extends ShardingEvent
   }
 
   def decideAssignmentsForUnassignedShards(
