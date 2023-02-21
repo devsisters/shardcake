@@ -15,7 +15,8 @@ object GraphQLApi extends GenericSchema[Has[ShardManager]] {
   case class Mutations(
     register: Pod => RIO[Has[ShardManager], Unit],
     unregister: Pod => RIO[Has[ShardManager], Unit],
-    notifyUnhealthyPod: PodAddressArgs => URIO[Has[ShardManager], Unit]
+    notifyUnhealthyPod: PodAddressArgs => URIO[Has[ShardManager], Unit],
+    checkAllPodsHealth: URIO[Has[ShardManager], Unit]
   )
   case class Subscriptions(events: ZStream[Has[ShardManager], Nothing, ShardingEvent])
 
@@ -26,7 +27,8 @@ object GraphQLApi extends GenericSchema[Has[ShardManager]] {
         Mutations(
           pod => ZIO.serviceWith(_.register(pod)),
           pod => ZIO.serviceWith(_.unregister(pod.address)),
-          args => ZIO.serviceWith(_.notifyUnhealthyPod(args.podAddress))
+          args => ZIO.serviceWith(_.notifyUnhealthyPod(args.podAddress)),
+          ZIO.serviceWith(_.checkAllPodsHealth)
         ),
         Subscriptions(ZStream.serviceWithStream(_.getShardingEvents))
       )
