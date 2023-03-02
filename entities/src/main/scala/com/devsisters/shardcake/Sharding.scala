@@ -322,7 +322,7 @@ class Sharding private (
 
   private def registerEntity[R, Req: Tag](
     entityType: EntityType[Req],
-    behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
+    behavior: (String, Queue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
     entityMaxIdleTime: Option[Duration] = None
   ): ZManaged[Clock with R, Nothing, Unit] =
@@ -331,7 +331,7 @@ class Sharding private (
 
   private def registerTopic[R, Req: Tag](
     topicType: TopicType[Req],
-    behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
+    behavior: (String, Queue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
   ): ZManaged[Clock with R, Nothing, Unit] = registerRecipient(topicType, behavior, terminateMessage) *>
     eventsHub.publish(ShardingRegistrationEvent.TopicRegistered(topicType)).unit.toManaged_
@@ -341,7 +341,7 @@ class Sharding private (
 
   def registerRecipient[R, Req: Tag](
     recipientType: RecipientType[Req],
-    behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
+    behavior: (String, Queue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
     entityMaxIdleTime: Option[Duration] = None
   ): ZManaged[Clock with R, Nothing, Unit] =
@@ -484,7 +484,7 @@ object Sharding {
    */
   def registerEntity[R, Req: Tag](
     entityType: EntityType[Req],
-    behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
+    behavior: (String, Queue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
     entityMaxIdleTime: Option[Duration] = None
   ): ZManaged[Has[Sharding] with R with Clock, Nothing, Unit] =
@@ -501,7 +501,7 @@ object Sharding {
    */
   def registerTopic[R, Req: Tag](
     topicType: TopicType[Req],
-    behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
+    behavior: (String, Queue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
   ): ZManaged[Has[Sharding] with R with Clock, Nothing, Unit] =
     for {
