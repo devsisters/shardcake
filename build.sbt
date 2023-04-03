@@ -80,8 +80,7 @@ lazy val manager = project
       Seq(
         "com.github.ghostdogpr"       %% "caliban"          % calibanVersion,
         "com.github.ghostdogpr"       %% "caliban-zio-http" % calibanVersion,
-        "com.softwaremill.sttp.tapir" %% "tapir-json-zio"   % "1.2.11",
-        "org.typelevel"               %% "cats-core"        % "2.9.0" % Test
+        "com.softwaremill.sttp.tapir" %% "tapir-json-zio"   % "1.2.11"
       )
   )
 

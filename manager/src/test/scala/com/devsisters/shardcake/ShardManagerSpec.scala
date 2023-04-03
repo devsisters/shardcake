@@ -1,6 +1,5 @@
 package com.devsisters.shardcake
 
-import cats.syntax.all._
 import com.devsisters.shardcake.ShardManager.{ PodWithMetadata, ShardManagerState }
 import com.devsisters.shardcake.interfaces.{ Pods, PodsHealth, Storage }
 import zio._
@@ -25,9 +24,9 @@ object ShardManagerSpec extends ZIOSpecDefault {
             )
           val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state, 1d)
           assertTrue(assignments.contains(pod2.pod.address)) &&
-          assertTrue(assignments.size === 1) &&
+          assertTrue(assignments.size == 1) &&
           assertTrue(unassignments.contains(pod1.pod.address)) &&
-          assertTrue(unassignments.size === 1)
+          assertTrue(unassignments.size == 1)
         },
         test("Don't rebalance to pod with older version") {
           val state                        =
@@ -72,9 +71,9 @@ object ShardManagerSpec extends ZIOSpecDefault {
             )
           val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state, 1d)
           assertTrue(assignments.contains(pod2.pod.address)) &&
-          assertTrue(assignments.size === 1) &&
+          assertTrue(assignments.size == 1) &&
           assertTrue(unassignments.contains(pod1.pod.address)) &&
-          assertTrue(unassignments.size === 1)
+          assertTrue(unassignments.size == 1)
         },
         test("Pick the pod with less shards") {
           val state                        =
@@ -84,9 +83,9 @@ object ShardManagerSpec extends ZIOSpecDefault {
             )
           val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state, 1d)
           assertTrue(assignments.contains(pod3.pod.address)) &&
-          assertTrue(assignments.size === 1) &&
+          assertTrue(assignments.size == 1) &&
           assertTrue(unassignments.contains(pod1.pod.address)) &&
-          assertTrue(unassignments.size === 1)
+          assertTrue(unassignments.size == 1)
         },
         test("Don't rebalance if pod list is empty") {
           val state                        =
@@ -124,7 +123,7 @@ object ShardManagerSpec extends ZIOSpecDefault {
 
           val shardsPerPod =
             result.shards.groupBy(_._2).collect { case (Some(address), shards) => address -> shards.keySet }
-          assertTrue(shardsPerPod.values.forall(_.size === 10))
+          assertTrue(shardsPerPod.values.forall(_.size == 10))
         }
       ),
       suite("Simulations")(
