@@ -5,6 +5,8 @@ import caliban.wrappers.Wrappers.printErrors
 import sttp.tapir.json.zio._
 import zio.http.{ Server => ZServer, _ }
 import zio._
+import caliban.interop.tapir.HttpInterpreter
+import caliban.interop.tapir.WebSocketInterpreter
 
 object Server {
 
@@ -16,10 +18,11 @@ object Server {
       config      <- ZIO.service[ManagerConfig]
       interpreter <- (GraphQLApi.api @@ printErrors).interpreter
       routes       = Http
-                       .collectRoute[Request] {
+                       .collectHttp[Request] {
                          case _ -> !! / "health"          => Handler.ok.toHttp
-                         case _ -> !! / "api" / "graphql" => ZHttpAdapter.makeHttpService(interpreter)
-                         case _ -> !! / "ws" / "graphql"  => ZHttpAdapter.makeWebSocketService(interpreter)
+                         case _ -> !! / "api" / "graphql" => ZHttpAdapter.makeHttpService(HttpInterpreter(interpreter))
+                         case _ -> !! / "ws" / "graphql"  =>
+                           ZHttpAdapter.makeWebSocketService(WebSocketInterpreter(interpreter))
                        }
                        .withDefaultErrorResponse @@ HttpAppMiddleware.cors()
       nothing     <-
@@ -32,7 +35,7 @@ object Server {
                   ZIO.never
               )
               .provideSomeLayer[ShardManager with Scope](
-                ZServer.live(ServerConfig.default.port(config.apiPort))
+                ZServer.defaultWithPort(config.apiPort)
               )
           )
           .forever
