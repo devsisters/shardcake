@@ -51,29 +51,29 @@ class GrpcPods(
     })
 
   def assignShards(pod: PodAddress, shards: Set[ShardId]): Task[Unit] =
-    getConnection(pod).flatMap(_.assignShards(AssignShardsRequest(shards.toSeq)).unit.mapError(_.asException()))
+    getConnection(pod).flatMap(_.assignShards(AssignShardsRequest(shards.toSeq)).unit)
 
   def unassignShards(pod: PodAddress, shards: Set[ShardId]): Task[Unit] =
-    getConnection(pod).flatMap(
-      _.unassignShards(UnassignShardsRequest(shards.toSeq)).unit.mapError(_.asException())
-    )
+    getConnection(pod).flatMap(_.unassignShards(UnassignShardsRequest(shards.toSeq)).unit)
 
   def ping(pod: PodAddress): Task[Unit] =
-    getConnection(pod).flatMap(_.pingShards(PingShardsRequest()).unit.mapError(_.asException()))
+    getConnection(pod).flatMap(_.pingShards(PingShardsRequest()).unit)
 
   def sendMessage(pod: PodAddress, message: BinaryMessage): Task[Option[Array[Byte]]] =
     getConnection(pod)
       .flatMap(
         _.send(SendRequest(message.entityId, message.entityType, ByteString.copyFrom(message.body), message.replyId))
           .foldZIO(
-            status =>
-              if (status.getCode == Status.Code.RESOURCE_EXHAUSTED) {
+            ex =>
+              if (ex.getStatus.getCode == Status.Code.RESOURCE_EXHAUSTED) {
                 // entity is not managed by this pod, wait and retry (assignments will be updated)
                 ZIO.fail(EntityNotManagedByThisPod(message.entityId))
-              } else if (status.getCode == Status.Code.UNAVAILABLE || status.getCode == Status.Code.CANCELLED) {
+              } else if (
+                ex.getStatus.getCode == Status.Code.UNAVAILABLE || ex.getStatus.getCode == Status.Code.CANCELLED
+              ) {
                 ZIO.fail(PodUnavailable(pod))
               } else {
-                ZIO.fail(status.asException())
+                ZIO.fail(ex)
               },
             res =>
               if (res.body.isEmpty) ZIO.none

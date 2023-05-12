@@ -11,13 +11,13 @@ import scalapb.zio_grpc.{ ScopedServer, ServiceList }
 import zio.{ Config => _, _ }
 
 abstract class GrpcShardingService(sharding: Sharding, timeout: Duration) extends ShardingService {
-  def assignShards(request: AssignShardsRequest): ZIO[Any, Status, AssignShardsResponse] =
+  def assignShards(request: AssignShardsRequest): ZIO[Any, StatusException, AssignShardsResponse] =
     sharding.assign(request.shards.toSet).as(AssignShardsResponse())
 
-  def unassignShards(request: UnassignShardsRequest): ZIO[Any, Status, UnassignShardsResponse] =
+  def unassignShards(request: UnassignShardsRequest): ZIO[Any, StatusException, UnassignShardsResponse] =
     sharding.unassign(request.shards.toSet).as(UnassignShardsResponse())
 
-  def send(request: SendRequest): ZIO[Any, Status, SendResponse] =
+  def send(request: SendRequest): ZIO[Any, StatusException, SendResponse] =
     sharding
       .sendToLocalEntity(
         BinaryMessage(request.entityId, request.entityType, request.body.toByteArray, request.replyId)
@@ -27,16 +27,16 @@ abstract class GrpcShardingService(sharding: Sharding, timeout: Duration) extend
         case Some(res) => ByteString.copyFrom(res)
       }
       .mapBoth(mapErrorToStatusWithInternalDetails, SendResponse(_))
-      .timeoutFail(Status.ABORTED.withDescription("Timeout while handling sharding send grpc"))(timeout)
+      .timeoutFail(Status.ABORTED.withDescription("Timeout while handling sharding send grpc").asException())(timeout)
 
-  def pingShards(request: PingShardsRequest): ZIO[Any, Status, PingShardsResponse] =
+  def pingShards(request: PingShardsRequest): ZIO[Any, StatusException, PingShardsResponse] =
     ZIO.succeed(PingShardsResponse())
 
-  private def mapErrorToStatusWithInternalDetails: Function[Throwable, Status] = {
-    case e: StatusException           => e.getStatus
-    case e: StatusRuntimeException    => e.getStatus
-    case e: EntityNotManagedByThisPod => Status.RESOURCE_EXHAUSTED.withCause(e)
-    case e                            => Status.INTERNAL.withCause(e).withDescription(e.getMessage)
+  private def mapErrorToStatusWithInternalDetails: Function[Throwable, StatusException] = {
+    case e: StatusException           => e
+    case e: StatusRuntimeException    => e.getStatus.asException()
+    case e: EntityNotManagedByThisPod => Status.RESOURCE_EXHAUSTED.withCause(e).asException()
+    case e                            => Status.INTERNAL.withCause(e).withDescription(e.getMessage).asException()
   }
 }
 
