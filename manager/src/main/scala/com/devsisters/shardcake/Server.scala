@@ -23,8 +23,7 @@ object Server {
                          case _ -> !! / "api" / "graphql" => ZHttpAdapter.makeHttpService(HttpInterpreter(interpreter))
                          case _ -> !! / "ws" / "graphql"  =>
                            ZHttpAdapter.makeWebSocketService(WebSocketInterpreter(interpreter))
-                       }
-                       .withDefaultErrorResponse @@ HttpAppMiddleware.cors()
+                       } @@ HttpAppMiddleware.cors()
       nothing     <-
         ZIO
           .scoped(
