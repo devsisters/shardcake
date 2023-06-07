@@ -4,10 +4,10 @@ val allScala = Seq(scala213, scala3)
 
 val zioVersion            = "2.0.13"
 val zioGrpcVersion        = "0.6.0-rc5"
-val zioK8sVersion         = "2.0.1"
+val zioK8sVersion         = "2.0.2"
 val zioCacheVersion       = "0.2.1"
 val zioCatsInteropVersion = "23.0.0.0"
-val sttpVersion           = "3.8.7"
+val sttpVersion           = "3.8.15"
 val calibanVersion        = "2.2.1"
 val redis4catsVersion     = "1.2.0"
 val chillVersion          = "0.9.5"
