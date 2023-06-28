@@ -1,5 +1,5 @@
 val scala213 = "2.13.8"
-val scala3   = "3.2.1"
+val scala3   = "3.3.0"
 val allScala = Seq(scala213, scala3)
 
 val zioVersion            = "2.0.13"
