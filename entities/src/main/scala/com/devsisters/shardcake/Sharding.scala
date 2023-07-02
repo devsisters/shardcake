@@ -38,13 +38,23 @@ class Sharding private (
       isShuttingDownRef.set(false) *>
       shardManager.register(address)
 
-  val unregister: Task[Unit] =
-    shardManager.getAssignments *> // ping the shard manager first to stop if it's not available
-      ZIO.logDebug(s"Stopping local entities") *>
-      isShuttingDownRef.set(true) *>
-      entityStates.get.flatMap(states => ZIO.foreachDiscard(states.values)(_.entityManager.terminateAllEntities)) *>
-      ZIO.logDebug(s"Unregistering pod $address to Shard Manager") *>
-      shardManager.unregister(address)
+  val unregister: UIO[Unit] =
+    // ping the shard manager first to stop if it's not available
+    shardManager.getAssignments.foldCauseZIO(
+      ZIO.logWarningCause("Shard Manager not available. Can't unregister cleanly", _),
+      _ =>
+        ZIO.logDebug(s"Stopping local entities") *>
+          isShuttingDownRef.set(true) *>
+          entityStates.get.flatMap(
+            ZIO.foreachDiscard(_) { case (name, entity) =>
+              entity.entityManager.terminateAllEntities.catchAllCause(
+                ZIO.logErrorCause(s"Error during stop of entity $name", _)
+              )
+            }
+          ) *>
+          ZIO.logDebug(s"Unregistering pod $address to Shard Manager") *>
+          shardManager.unregister(address).catchAllCause(ZIO.logErrorCause("Error during unregister", _))
+    )
 
   private def isSingletonNode: UIO[Boolean] =
     // Start singletons on the pod hosting shard 1.
@@ -435,14 +445,14 @@ object Sharding {
   /**
    * Notify the shard manager that shards must be unassigned from this pod.
    */
-  def unregister: RIO[Sharding, Unit] =
+  def unregister: URIO[Sharding, Unit] =
     ZIO.serviceWithZIO[Sharding](_.unregister)
 
   /**
    * Same as `register`, but will automatically call `unregister` when the `Scope` is terminated.
    */
   def registerScoped: RIO[Sharding with Scope, Unit] =
-    Sharding.register.withFinalizer(_ => Sharding.unregister.ignore)
+    Sharding.register.withFinalizer(_ => Sharding.unregister)
 
   /**
    * Start a computation that is guaranteed to run only on a single pod.
