@@ -21,18 +21,22 @@ trait Messenger[-Msg] {
   def send[Res](entityId: String)(msg: Replier[Res] => Msg): Task[Res]
 
   /**
-   * Send a message and receive a stream of responses of type `Res`
+   * Send a message and receive a stream of responses of type `Res`.
+   *
+   * Note: The returned stream will fail with a `PodUnavailable` error if the remote entity is rebalanced while
+   * streaming responses. See `sendStreamAutoRestart` for an alternative that will automatically restart the stream
+   * in case of rebalance.
    */
   def sendStream[Res](entityId: String)(msg: StreamReplier[Res] => Msg): Task[ZStream[Any, Throwable, Res]]
 
   /**
-   * Send a message and receive a stream of responses of type `Res` and restart the stream when the remote entity is
-   * rebalanced.
+   * Send a message and receive a stream of responses of type `Res` while restarting the stream when the remote entity
+   * is rebalanced.
    *
    * To do so, we need a "cursor" so the stream of responses can be restarted where it ended before the rebalance. That
    * is, the first message sent to the remote entity contains the given initial cursor value and we extract an updated
-   * cursor from the responses so that when the remote entity is rebalanced, a new message can be sent with the last
-   * cursor we've seen in the previous stream of responses.
+   * cursor from the responses so that when the remote entity is rebalanced, a new message can be sent with the right
+   * cursor according to what we've seen in the previous stream of responses.
    */
   def sendStreamAutoRestart[Cursor, Res](entityId: String, cursor: Cursor)(msg: (Cursor, StreamReplier[Res]) => Msg)(
     updateCursor: (Cursor, Res) => Cursor
