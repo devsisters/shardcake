@@ -1,6 +1,5 @@
 package com.devsisters.shardcake
 
-import zio.stream.ZStream
 import zio.{ URIO, ZIO }
 
 /**
@@ -9,7 +8,4 @@ import zio.{ URIO, ZIO }
 case class Replier[-R](id: String) { self =>
   def reply(reply: R): URIO[Sharding, Unit] =
     ZIO.serviceWithZIO[Sharding](_.reply(reply, self))
-
-  def replyStream(replies: ZStream[Any, Nothing, R]): URIO[Sharding, Unit] =
-    ZIO.serviceWithZIO[Sharding](_.replyStream(replies, self))
 }

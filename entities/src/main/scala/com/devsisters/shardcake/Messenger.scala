@@ -23,7 +23,7 @@ trait Messenger[-Msg] {
   /**
    * Send a message and receive a stream of responses of type `Res`
    */
-  def sendStream[Res](entityId: String)(msg: Replier[Res] => Msg): Task[ZStream[Any, Throwable, Res]]
+  def sendStream[Res](entityId: String)(msg: StreamReplier[Res] => Msg): Task[ZStream[Any, Throwable, Res]]
 
   /**
    * Send a message and receive a stream of responses of type `Res` and restart the stream when the remote entity is
@@ -34,7 +34,7 @@ trait Messenger[-Msg] {
    * cursor from the responses so that when the remote entity is rebalanced, a new message can be sent with the last
    * cursor we've seen in the previous stream of responses.
    */
-  def sendStreamAutoRestart[Cursor, Res](entityId: String, cursor: Cursor)(msg: (Cursor, Replier[Res]) => Msg)(
+  def sendStreamAutoRestart[Cursor, Res](entityId: String, cursor: Cursor)(msg: (Cursor, StreamReplier[Res]) => Msg)(
     updateCursor: (Cursor, Res) => Cursor
   ): ZStream[Any, Throwable, Res] =
     ZStream
