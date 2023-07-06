@@ -13,9 +13,9 @@ import zio.stream.ZStream
 
 class GrpcPods(
   config: GrpcConfig,
-  connections: Ref.Synchronized[Map[PodAddress, (ShardingServiceClient.ZService[Any, Any], Fiber[Throwable, Nothing])]]
+  connections: Ref.Synchronized[Map[PodAddress, (ShardingServiceClient, Fiber[Throwable, Nothing])]]
 ) extends Pods {
-  private def getConnection(pod: PodAddress): Task[ShardingServiceClient.ZService[Any, Any]] =
+  private def getConnection(pod: PodAddress): Task[ShardingServiceClient] =
     // optimize happy path and only get first
     connections.get.flatMap(_.get(pod) match {
       case Some((channel, _)) => ZIO.succeed(channel)
@@ -25,7 +25,7 @@ class GrpcPods(
           map.get(pod) match {
             case Some((channel, _)) => ZIO.succeed((channel, map))
             case None               =>
-              val channel: ZManagedChannel[Any] =
+              val channel: ZManagedChannel =
                 ZManagedChannel.apply(
                   ManagedChannelBuilder
                     .forAddress(pod.host, pod.port)
@@ -35,7 +35,7 @@ class GrpcPods(
               // create a fiber that never ends and keeps the connection alive
               for {
                 _          <- ZIO.logDebug(s"Opening connection to pod $pod")
-                promise    <- Promise.make[Nothing, ShardingServiceClient.ZService[Any, Any]]
+                promise    <- Promise.make[Nothing, ShardingServiceClient]
                 fiber      <-
                   ZIO
                     .scoped(
@@ -52,29 +52,29 @@ class GrpcPods(
     })
 
   def assignShards(pod: PodAddress, shards: Set[ShardId]): Task[Unit] =
-    getConnection(pod).flatMap(_.assignShards(AssignShardsRequest(shards.toSeq)).unit.mapError(_.asException()))
+    getConnection(pod).flatMap(_.assignShards(AssignShardsRequest(shards.toSeq)).unit)
 
   def unassignShards(pod: PodAddress, shards: Set[ShardId]): Task[Unit] =
-    getConnection(pod).flatMap(
-      _.unassignShards(UnassignShardsRequest(shards.toSeq)).unit.mapError(_.asException())
-    )
+    getConnection(pod).flatMap(_.unassignShards(UnassignShardsRequest(shards.toSeq)).unit)
 
   def ping(pod: PodAddress): Task[Unit] =
-    getConnection(pod).flatMap(_.pingShards(PingShardsRequest()).unit.mapError(_.asException()))
+    getConnection(pod).flatMap(_.pingShards(PingShardsRequest()).unit)
 
   def sendMessage(pod: PodAddress, message: BinaryMessage): Task[Option[Array[Byte]]] =
     getConnection(pod)
       .flatMap(
         _.send(SendRequest(message.entityId, message.entityType, ByteString.copyFrom(message.body), message.replyId))
           .mapBoth(
-            status =>
-              if (status.getCode == Status.Code.RESOURCE_EXHAUSTED) {
+            ex =>
+              if (ex.getStatus.getCode == Status.Code.RESOURCE_EXHAUSTED) {
                 // entity is not managed by this pod, wait and retry (assignments will be updated)
                 EntityNotManagedByThisPod(message.entityId)
-              } else if (status.getCode == Status.Code.UNAVAILABLE || status.getCode == Status.Code.CANCELLED) {
+              } else if (
+                ex.getStatus.getCode == Status.Code.UNAVAILABLE || ex.getStatus.getCode == Status.Code.CANCELLED
+              ) {
                 PodUnavailable(pod)
               } else {
-                status.asException()
+                ex
               },
             res => if (res.body.isEmpty) None else Some(res.body.toByteArray)
           )
@@ -87,14 +87,16 @@ class GrpcPods(
         _.sendStream(
           SendRequest(message.entityId, message.entityType, ByteString.copyFrom(message.body), message.replyId)
         ).mapBoth(
-          status =>
-            if (status.getCode == Status.Code.RESOURCE_EXHAUSTED) {
+          ex =>
+            if (ex.getStatus.getCode == Status.Code.RESOURCE_EXHAUSTED) {
               // entity is not managed by this pod, wait and retry (assignments will be updated)
               EntityNotManagedByThisPod(message.entityId)
-            } else if (status.getCode == Status.Code.UNAVAILABLE || status.getCode == Status.Code.CANCELLED) {
+            } else if (
+              ex.getStatus.getCode == Status.Code.UNAVAILABLE || ex.getStatus.getCode == Status.Code.CANCELLED
+            ) {
               PodUnavailable(pod)
             } else {
-              status.asException()
+              ex
             },
           _.body.toByteArray
         )
@@ -112,7 +114,7 @@ object GrpcPods {
         config      <- ZIO.service[GrpcConfig]
         connections <-
           Ref.Synchronized
-            .make(Map.empty[PodAddress, (ShardingServiceClient.ZService[Any, Any], Fiber[Throwable, Nothing])])
+            .make(Map.empty[PodAddress, (ShardingServiceClient, Fiber[Throwable, Nothing])])
             .withFinalizer(
               // stop all connection fibers on release
               _.get.flatMap(connections => ZIO.foreachDiscard(connections) { case (_, (_, fiber)) => fiber.interrupt })

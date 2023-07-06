@@ -13,8 +13,8 @@ import example.simple.GuildBehavior
 import example.simple.GuildBehavior.Guild
 import example.simple.GuildBehavior.GuildMessage.{ Join, Stream, Timeout }
 import sttp.client3.UriContext
+import zio.{ Config => _, _ }
 import zio.Clock.ClockLive
-import zio._
 import zio.interop.catz._
 import zio.test.Assertion._
 import zio.test.TestAspect.{ sequential, withLiveClock }

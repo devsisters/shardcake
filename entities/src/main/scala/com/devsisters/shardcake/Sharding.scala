@@ -5,7 +5,7 @@ import com.devsisters.shardcake.errors.{ EntityNotManagedByThisPod, PodUnavailab
 import com.devsisters.shardcake.interfaces.Pods.BinaryMessage
 import com.devsisters.shardcake.interfaces.{ Pods, Serialization, Storage }
 import com.devsisters.shardcake.internal.{ EntityManager, ReplyChannel }
-import zio._
+import zio.{ Config => _, _ }
 import zio.stream.ZStream
 
 import java.time.OffsetDateTime
@@ -38,13 +38,23 @@ class Sharding private (
       isShuttingDownRef.set(false) *>
       shardManager.register(address)
 
-  val unregister: Task[Unit] =
-    shardManager.getAssignments *> // ping the shard manager first to stop if it's not available
-      ZIO.logDebug(s"Stopping local entities") *>
-      isShuttingDownRef.set(true) *>
-      entityStates.get.flatMap(states => ZIO.foreachDiscard(states.values)(_.entityManager.terminateAllEntities)) *>
-      ZIO.logDebug(s"Unregistering pod $address to Shard Manager") *>
-      shardManager.unregister(address)
+  val unregister: UIO[Unit] =
+    // ping the shard manager first to stop if it's not available
+    shardManager.getAssignments.foldCauseZIO(
+      ZIO.logWarningCause("Shard Manager not available. Can't unregister cleanly", _),
+      _ =>
+        ZIO.logDebug(s"Stopping local entities") *>
+          isShuttingDownRef.set(true) *>
+          entityStates.get.flatMap(
+            ZIO.foreachDiscard(_) { case (name, entity) =>
+              entity.entityManager.terminateAllEntities.catchAllCause(
+                ZIO.logErrorCause(s"Error during stop of entity $name", _)
+              )
+            }
+          ) *>
+          ZIO.logDebug(s"Unregistering pod $address to Shard Manager") *>
+          shardManager.unregister(address).catchAllCause(ZIO.logErrorCause("Error during unregister", _))
+    )
 
   private def isSingletonNode: UIO[Boolean] =
     // Start singletons on the pod hosting shard 1.
@@ -354,7 +364,7 @@ class Sharding private (
 
   def registerEntity[R, Req: Tag](
     entityType: EntityType[Req],
-    behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
+    behavior: (String, Queue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
     entityMaxIdleTime: Option[Duration] = None
   ): URIO[Scope with R, Unit] = registerRecipient(entityType, behavior, terminateMessage, entityMaxIdleTime) *>
@@ -362,7 +372,7 @@ class Sharding private (
 
   def registerTopic[R, Req: Tag](
     topicType: TopicType[Req],
-    behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
+    behavior: (String, Queue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
   ): URIO[Scope with R, Unit] = registerRecipient(topicType, behavior, terminateMessage) *>
     eventsHub.publish(ShardingRegistrationEvent.TopicRegistered(topicType)).unit
@@ -372,7 +382,7 @@ class Sharding private (
 
   def registerRecipient[R, Req: Tag](
     recipientType: RecipientType[Req],
-    behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
+    behavior: (String, Queue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
     entityMaxIdleTime: Option[Duration] = None
   ): URIO[Scope with R, Unit] =
@@ -465,14 +475,14 @@ object Sharding {
   /**
    * Notify the shard manager that shards must be unassigned from this pod.
    */
-  def unregister: RIO[Sharding, Unit] =
+  def unregister: URIO[Sharding, Unit] =
     ZIO.serviceWithZIO[Sharding](_.unregister)
 
   /**
    * Same as `register`, but will automatically call `unregister` when the `Scope` is terminated.
    */
   def registerScoped: RIO[Sharding with Scope, Unit] =
-    Sharding.register.withFinalizer(_ => Sharding.unregister.ignore)
+    Sharding.register.withFinalizer(_ => Sharding.unregister)
 
   /**
    * Start a computation that is guaranteed to run only on a single pod.
@@ -489,7 +499,7 @@ object Sharding {
    */
   def registerEntity[R, Req: Tag](
     entityType: EntityType[Req],
-    behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
+    behavior: (String, Queue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
     entityMaxIdleTime: Option[Duration] = None
   ): URIO[Sharding with Scope with R, Unit] =
@@ -503,7 +513,7 @@ object Sharding {
    */
   def registerTopic[R, Req: Tag](
     topicType: TopicType[Req],
-    behavior: (String, Dequeue[Req]) => RIO[R, Nothing],
+    behavior: (String, Queue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
   ): URIO[Sharding with Scope with R, Unit] =
     ZIO.serviceWithZIO[Sharding](_.registerTopic[R, Req](topicType, behavior, terminateMessage))

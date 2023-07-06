@@ -1,14 +1,14 @@
 val scala213 = "2.13.8"
-val scala3   = "3.1.3"
+val scala3   = "3.3.0"
 val allScala = Seq(scala213, scala3)
 
-val zioVersion            = "2.0.2"
-val zioGrpcVersion        = "0.6.0-test4"
-val zioK8sVersion         = "2.0.0"
-val zioCacheVersion       = "0.2.0"
-val zioCatsInteropVersion = "3.3.0"
-val sttpVersion           = "3.7.0"
-val calibanVersion        = "2.0.0"
+val zioVersion            = "2.0.15"
+val zioGrpcVersion        = "0.6.0-rc5+29-a5aaa11f-SNAPSHOT"
+val zioK8sVersion         = "2.0.2"
+val zioCacheVersion       = "0.2.1"
+val zioCatsInteropVersion = "23.0.0.0"
+val sttpVersion           = "3.8.15"
+val calibanVersion        = "2.2.1"
 val redis4catsVersion     = "1.2.0"
 val chillVersion          = "0.9.5"
 val testContainersVersion = "0.40.9"
@@ -78,8 +78,9 @@ lazy val manager = project
   .settings(
     libraryDependencies ++=
       Seq(
-        "com.github.ghostdogpr" %% "caliban"          % calibanVersion,
-        "com.github.ghostdogpr" %% "caliban-zio-http" % calibanVersion
+        "com.github.ghostdogpr"       %% "caliban"          % calibanVersion,
+        "com.github.ghostdogpr"       %% "caliban-zio-http" % calibanVersion,
+        "com.softwaremill.sttp.tapir" %% "tapir-json-zio"   % "1.3.0"
       )
   )
 

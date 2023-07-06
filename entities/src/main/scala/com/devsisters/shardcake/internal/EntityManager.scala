@@ -2,7 +2,7 @@ package com.devsisters.shardcake.internal
 
 import com.devsisters.shardcake.errors.EntityNotManagedByThisPod
 import com.devsisters.shardcake._
-import zio._
+import zio.{ Config => _, _ }
 
 private[shardcake] trait EntityManager[-Req] {
   def send(

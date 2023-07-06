@@ -1,13 +1,14 @@
 package com.devsisters.shardcake
 
-import caliban.GraphQL.graphQL
 import caliban.schema.GenericSchema
-import caliban.{ GraphQL, RootResolver }
+import caliban.{ graphQL, GraphQL, RootResolver }
+import caliban.schema.ArgBuilder.auto._
 import com.devsisters.shardcake.ShardManager.ShardingEvent
 import zio.stream.ZStream
 import zio.{ RIO, URIO, ZIO }
 
 object GraphQLApi extends GenericSchema[ShardManager] {
+  import auto._
 
   case class Assignment(shardId: ShardId, pod: Option[PodAddress])
   case class Queries(getAssignments: URIO[ShardManager, List[Assignment]])
@@ -15,7 +16,8 @@ object GraphQLApi extends GenericSchema[ShardManager] {
   case class Mutations(
     register: Pod => RIO[ShardManager, Unit],
     unregister: Pod => RIO[ShardManager, Unit],
-    notifyUnhealthyPod: PodAddressArgs => URIO[ShardManager, Unit]
+    notifyUnhealthyPod: PodAddressArgs => URIO[ShardManager, Unit],
+    checkAllPodsHealth: URIO[ShardManager, Unit]
   )
   case class Subscriptions(events: ZStream[ShardManager, Nothing, ShardingEvent])
 
@@ -26,7 +28,8 @@ object GraphQLApi extends GenericSchema[ShardManager] {
         Mutations(
           pod => ZIO.serviceWithZIO(_.register(pod)),
           pod => ZIO.serviceWithZIO(_.unregister(pod.address)),
-          args => ZIO.serviceWithZIO(_.notifyUnhealthyPod(args.podAddress))
+          args => ZIO.serviceWithZIO(_.notifyUnhealthyPod(args.podAddress)),
+          ZIO.serviceWithZIO(_.checkAllPodsHealth)
         ),
         Subscriptions(ZStream.serviceWithStream(_.getShardingEvents))
       )

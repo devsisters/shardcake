@@ -2,11 +2,11 @@ package com.devsisters.shardcake
 
 import caliban.ZHttpAdapter
 import caliban.wrappers.Wrappers.printErrors
-import zhttp.http._
-import zhttp.http.Middleware.cors
-import zhttp.service.{ EventLoopGroup, Server => ZServer }
-import zhttp.service.server.ServerChannelFactory
+import sttp.tapir.json.zio._
+import zio.http.{ Server => ZServer, _ }
 import zio._
+import caliban.interop.tapir.HttpInterpreter
+import caliban.interop.tapir.WebSocketInterpreter
 
 object Server {
 
@@ -17,20 +17,26 @@ object Server {
     for {
       config      <- ZIO.service[ManagerConfig]
       interpreter <- (GraphQLApi.api @@ printErrors).interpreter
-      server       = ZServer.port(config.apiPort) ++ ZServer.app(Http.collectHttp[Request] {
-                       case _ -> !! / "health"          => Http.succeed(Response.ok)
-                       case _ -> !! / "api" / "graphql" => ZHttpAdapter.makeHttpService(interpreter)
-                       case _ -> !! / "ws" / "graphql"  => ZHttpAdapter.makeWebSocketService(interpreter)
-                     } @@ cors())
-      nothing     <- ZIO
-                       .scoped(
-                         server.make
-                           .flatMap(start =>
-                             ZIO.logInfo(s"Shard Manager server started on port ${start.port}.") *>
-                               ZIO.never
-                           )
-                           .provideSomeLayer[ShardManager with Scope](EventLoopGroup.auto(0) ++ ServerChannelFactory.auto)
-                       )
-                       .forever
+      routes       = Http
+                       .collectHttp[Request] {
+                         case _ -> !! / "health"          => Handler.ok.toHttp
+                         case _ -> !! / "api" / "graphql" => ZHttpAdapter.makeHttpService(HttpInterpreter(interpreter))
+                         case _ -> !! / "ws" / "graphql"  =>
+                           ZHttpAdapter.makeWebSocketService(WebSocketInterpreter(interpreter))
+                       } @@ HttpAppMiddleware.cors()
+      nothing     <-
+        ZIO
+          .scoped(
+            ZServer
+              .serve(routes)
+              .flatMap(port =>
+                ZIO.logInfo(s"Shard Manager server started on port $port.") *>
+                  ZIO.never
+              )
+              .provideSomeLayer[ShardManager with Scope](
+                ZServer.defaultWithPort(config.apiPort)
+              )
+          )
+          .forever
     } yield nothing
 }

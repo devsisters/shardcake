@@ -8,7 +8,7 @@ import sttp.capabilities.WebSockets
 import sttp.capabilities.zio.ZioStreams
 import sttp.client3.SttpBackend
 import sttp.client3.asynchttpclient.zio.AsyncHttpClientZioBackend
-import zio._
+import zio.{ Config => _, _ }
 
 /**
  * An interface to communicate with the Shard Manager API

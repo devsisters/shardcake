@@ -6,4 +6,4 @@ addSbtPlugin("com.thesamet"   % "sbt-protoc"     % "1.0.6")
 resolvers ++= Resolver.sonatypeOssRepos("snapshots")
 
 libraryDependencies += "com.thesamet.scalapb"          %% "compilerplugin"   % "0.11.10"
-libraryDependencies += "com.thesamet.scalapb.zio-grpc" %% "zio-grpc-codegen" % "0.6.0-test4"
+libraryDependencies += "com.thesamet.scalapb.zio-grpc" %% "zio-grpc-codegen" % "0.6.0-rc5+29-a5aaa11f-SNAPSHOT"

@@ -1,7 +1,7 @@
 package com.devsisters.shardcake
 
 import com.devsisters.shardcake.interfaces.{ Pods, Serialization, Storage }
-import zio._
+import zio.{ Config => _, _ }
 import zio.test.TestAspect.{ sequential, withLiveClock }
 import zio.test._
 
