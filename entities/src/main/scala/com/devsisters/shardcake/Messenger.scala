@@ -42,7 +42,7 @@ trait Messenger[-Msg] {
     updateCursor: (Cursor, Res) => Cursor
   ): ZStream[Any, Throwable, Res] =
     ZStream
-      .unwrap(sendStream(entityId)(msg(cursor, _)))
+      .unwrap(sendStream[Res](entityId)(msg(cursor, _)))
       .either
       .mapAccum(cursor) {
         case (c, Right(res)) => updateCursor(c, res) -> Right(res)
