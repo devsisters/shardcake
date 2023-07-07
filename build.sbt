@@ -9,7 +9,7 @@ val zioCatsInteropVersion = "13.0.0.1"
 val sttpVersion           = "3.7.0"
 val calibanVersion        = "1.4.3"
 val redis4catsVersion     = "1.2.0"
-val chillVersion          = "0.9.5"
+val scalaKryoVersion      = "1.0.0-RC1"
 val testContainersVersion = "0.40.9"
 
 inThisBuild(
@@ -132,7 +132,7 @@ lazy val serializationKryo = project
   .settings(
     libraryDependencies ++=
       Seq(
-        ("com.twitter" %% "chill" % chillVersion).cross(CrossVersion.for3Use2_13)
+        ("io.altoo" %% "scala-kryo-serialization" % scalaKryoVersion).cross(CrossVersion.for3Use2_13)
       )
   )
 
