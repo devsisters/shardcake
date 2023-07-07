@@ -132,7 +132,7 @@ lazy val serializationKryo = project
   .settings(
     libraryDependencies ++=
       Seq(
-        ("io.altoo" %% "scala-kryo-serialization" % scalaKryoVersion).cross(CrossVersion.for3Use2_13)
+        "io.altoo" %% "scala-kryo-serialization" % scalaKryoVersion
       )
   )
 
