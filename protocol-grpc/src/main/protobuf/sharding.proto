@@ -6,6 +6,7 @@ service ShardingService {
     rpc AssignShards (AssignShardsRequest) returns (AssignShardsResponse) {}
     rpc UnassignShards (UnassignShardsRequest) returns (UnassignShardsResponse) {}
     rpc Send (SendRequest) returns (SendResponse) {}
+    rpc SendStream (SendRequest) returns (stream SendResponse) {}
     rpc PingShards (PingShardsRequest) returns (PingShardsResponse) {}
 }
 

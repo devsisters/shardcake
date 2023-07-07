@@ -9,6 +9,7 @@ import com.google.protobuf.ByteString
 import io.grpc.{ ManagedChannelBuilder, Status }
 import scalapb.zio_grpc.ZManagedChannel
 import zio._
+import zio.stream.ZStream
 
 class GrpcPods(
   config: GrpcConfig,
@@ -63,22 +64,42 @@ class GrpcPods(
     getConnection(pod)
       .flatMap(
         _.send(SendRequest(message.entityId, message.entityType, ByteString.copyFrom(message.body), message.replyId))
-          .foldZIO(
+          .mapBoth(
             ex =>
               if (ex.getStatus.getCode == Status.Code.RESOURCE_EXHAUSTED) {
                 // entity is not managed by this pod, wait and retry (assignments will be updated)
-                ZIO.fail(EntityNotManagedByThisPod(message.entityId))
+                EntityNotManagedByThisPod(message.entityId)
               } else if (
                 ex.getStatus.getCode == Status.Code.UNAVAILABLE || ex.getStatus.getCode == Status.Code.CANCELLED
               ) {
-                ZIO.fail(PodUnavailable(pod))
+                PodUnavailable(pod)
               } else {
-                ZIO.fail(ex)
+                ex
               },
-            res =>
-              if (res.body.isEmpty) ZIO.none
-              else ZIO.some(res.body.toByteArray)
+            res => if (res.body.isEmpty) None else Some(res.body.toByteArray)
           )
+      )
+
+  def sendMessageStreaming(pod: PodAddress, message: BinaryMessage): ZStream[Any, Throwable, Array[Byte]] =
+    ZStream
+      .fromZIO(getConnection(pod))
+      .flatMap(
+        _.sendStream(
+          SendRequest(message.entityId, message.entityType, ByteString.copyFrom(message.body), message.replyId)
+        ).mapBoth(
+          ex =>
+            if (ex.getStatus.getCode == Status.Code.RESOURCE_EXHAUSTED) {
+              // entity is not managed by this pod, wait and retry (assignments will be updated)
+              EntityNotManagedByThisPod(message.entityId)
+            } else if (
+              ex.getStatus.getCode == Status.Code.UNAVAILABLE || ex.getStatus.getCode == Status.Code.CANCELLED
+            ) {
+              PodUnavailable(pod)
+            } else {
+              ex
+            },
+          _.body.toByteArray
+        )
       )
 }
 

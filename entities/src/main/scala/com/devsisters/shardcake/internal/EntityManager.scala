@@ -1,15 +1,15 @@
 package com.devsisters.shardcake.internal
 
 import com.devsisters.shardcake.errors.EntityNotManagedByThisPod
-import com.devsisters.shardcake.{ Config, EntityType, RecipientType, ShardId, Sharding, TopicType }
-import zio._
+import com.devsisters.shardcake._
+import zio.{ Config => _, _ }
 
 private[shardcake] trait EntityManager[-Req] {
   def send(
     entityId: String,
     req: Req,
     replyId: Option[String],
-    promise: Promise[Throwable, Option[Any]]
+    replyChannel: ReplyChannel[Nothing]
   ): IO[EntityNotManagedByThisPod, Unit]
   def terminateEntitiesOnShards(shards: Set[ShardId]): UIO[Unit]
   def terminateAllEntities: UIO[Unit]
@@ -77,7 +77,7 @@ private[shardcake] object EntityManager {
       entityId: String,
       req: Req,
       replyId: Option[String],
-      promise: Promise[Throwable, Option[Any]]
+      replyChannel: ReplyChannel[Nothing]
     ): IO[EntityNotManagedByThisPod, Unit] =
       for {
         // first, verify that this entity should be handled by this pod
@@ -123,13 +123,13 @@ private[shardcake] object EntityManager {
         _     <- queue match {
                    case None        =>
                      // the queue is shutting down, try again a little later
-                     Clock.sleep(100 millis) *> send(entityId, req, replyId, promise)
+                     Clock.sleep(100 millis) *> send(entityId, req, replyId, replyChannel)
                    case Some(queue) =>
-                     // add the message to the queue and setup the response promise if needed
+                     // add the message to the queue and setup the reply channel if needed
                      (replyId match {
-                       case Some(replyId) => sharding.initReply(replyId, promise) *> queue.offer(req)
-                       case None          => queue.offer(req) *> promise.succeed(None)
-                     }).catchAllCause(_ => send(entityId, req, replyId, promise))
+                       case Some(replyId) => sharding.initReply(replyId, replyChannel) *> queue.offer(req)
+                       case None          => queue.offer(req) *> replyChannel.end
+                     }).catchAllCause(_ => send(entityId, req, replyId, replyChannel))
                  }
       } yield ()
 

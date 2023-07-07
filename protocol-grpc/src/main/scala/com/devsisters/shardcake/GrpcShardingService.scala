@@ -9,6 +9,7 @@ import io.grpc.protobuf.services.ProtoReflectionService
 import io.grpc.{ ServerBuilder, Status, StatusException, StatusRuntimeException }
 import scalapb.zio_grpc.{ ScopedServer, ServiceList }
 import zio.{ Config => _, _ }
+import zio.stream.ZStream
 
 abstract class GrpcShardingService(sharding: Sharding, timeout: Duration) extends ShardingService {
   def assignShards(request: AssignShardsRequest): ZIO[Any, StatusException, AssignShardsResponse] =
@@ -19,7 +20,7 @@ abstract class GrpcShardingService(sharding: Sharding, timeout: Duration) extend
 
   def send(request: SendRequest): ZIO[Any, StatusException, SendResponse] =
     sharding
-      .sendToLocalEntity(
+      .sendToLocalEntitySingleReply(
         BinaryMessage(request.entityId, request.entityType, request.body.toByteArray, request.replyId)
       )
       .map {
@@ -28,6 +29,14 @@ abstract class GrpcShardingService(sharding: Sharding, timeout: Duration) extend
       }
       .mapBoth(mapErrorToStatusWithInternalDetails, SendResponse(_))
       .timeoutFail(Status.ABORTED.withDescription("Timeout while handling sharding send grpc").asException())(timeout)
+
+  def sendStream(request: SendRequest): ZStream[Any, StatusException, SendResponse] =
+    sharding
+      .sendToLocalEntityStreamingReply(
+        BinaryMessage(request.entityId, request.entityType, request.body.toByteArray, request.replyId)
+      )
+      .map(ByteString.copyFrom)
+      .mapBoth(mapErrorToStatusWithInternalDetails, SendResponse(_))
 
   def pingShards(request: PingShardsRequest): ZIO[Any, StatusException, PingShardsResponse] =
     ZIO.succeed(PingShardsResponse())

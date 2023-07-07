@@ -4,6 +4,7 @@ import com.devsisters.shardcake.CounterActor.CounterMessage._
 import com.devsisters.shardcake.CounterActor._
 import com.devsisters.shardcake.interfaces.{ Pods, Serialization, Storage }
 import zio.{ Config => _, _ }
+import zio.stream.SubscriptionRef
 import zio.test.TestAspect.{ sequential, withLiveClock }
 import zio.test._
 
@@ -25,6 +26,24 @@ object ShardingSpec extends ZIOSpecDefault {
             c1      <- counter.send("c1")(GetCounter.apply)
             c2      <- counter.send("c2")(GetCounter.apply)
           } yield assertTrue(c1 == 2) && assertTrue(c2 == 1)
+        }
+      },
+      test("Streaming") {
+        ZIO.scoped {
+          for {
+            _       <- Sharding.registerEntity(Counter, behavior)
+            _       <- Sharding.registerScoped
+            counter <- Sharding.messenger(Counter)
+            stream  <- counter.sendStream("c1")(StreamingChanges(_))
+            latch   <- Promise.make[Nothing, Unit]
+            fiber   <- stream.take(5).tap(_ => latch.succeed(())).runCollect.fork
+            _       <- latch.await
+            _       <- counter.sendDiscard("c1")(IncrementCounter)
+            _       <- counter.sendDiscard("c1")(DecrementCounter)
+            _       <- counter.sendDiscard("c1")(IncrementCounter)
+            _       <- counter.sendDiscard("c1")(IncrementCounter)
+            items   <- fiber.join
+          } yield assertTrue(items == Chunk(0, 1, 0, 1, 2))
         }
       },
       test("Entity termination") {
@@ -64,22 +83,24 @@ object CounterActor {
   sealed trait CounterMessage
 
   object CounterMessage {
-    case class GetCounter(replier: Replier[Int]) extends CounterMessage
-    case object IncrementCounter                 extends CounterMessage
-    case object DecrementCounter                 extends CounterMessage
+    case class GetCounter(replier: Replier[Int])             extends CounterMessage
+    case object IncrementCounter                             extends CounterMessage
+    case object DecrementCounter                             extends CounterMessage
+    case class StreamingChanges(replier: StreamReplier[Int]) extends CounterMessage
   }
 
   object Counter extends EntityType[CounterMessage]("counter")
 
   def behavior(entityId: String, messages: Dequeue[CounterMessage]): RIO[Sharding, Nothing] =
     ZIO.logInfo(s"Started entity $entityId") *>
-      Ref
+      SubscriptionRef
         .make(0)
         .flatMap(state =>
           messages.take.flatMap {
-            case CounterMessage.GetCounter(replier) => state.get.flatMap(replier.reply)
-            case CounterMessage.IncrementCounter    => state.update(_ + 1)
-            case CounterMessage.DecrementCounter    => state.update(_ - 1)
+            case CounterMessage.GetCounter(replier)       => state.get.flatMap(replier.reply)
+            case CounterMessage.IncrementCounter          => state.update(_ + 1)
+            case CounterMessage.DecrementCounter          => state.update(_ - 1)
+            case CounterMessage.StreamingChanges(replier) => replier.replyStream(state.changes)
           }.forever
         )
 }
