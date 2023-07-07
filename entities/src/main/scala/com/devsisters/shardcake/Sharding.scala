@@ -189,7 +189,7 @@ class Sharding private (
         .as(repliers - replier.id)
     )
 
-  def replyStream[Reply](replies: ZStream[Any, Nothing, Reply], replier: Replier[Reply]): UIO[Unit] =
+  def replyStream[Reply](replies: ZStream[Any, Nothing, Reply], replier: StreamReplier[Reply]): UIO[Unit] =
     replyChannels.updateZIO(repliers =>
       ZIO
         .whenCase(repliers.get(replier.id)) { case Some(q) => q.asInstanceOf[ReplyChannel[Reply]].replyStream(replies) }
@@ -275,9 +275,9 @@ class Sharding private (
             .interruptible
         }
 
-      def sendStream[Res](entityId: String)(msg: Replier[Res] => Msg): Task[ZStream[Any, Throwable, Res]] =
+      def sendStream[Res](entityId: String)(msg: StreamReplier[Res] => Msg): Task[ZStream[Any, Throwable, Res]] =
         Random.nextUUID.flatMap { uuid =>
-          sendMessageStreaming[Res](entityId, msg(Replier(uuid.toString)), Some(uuid.toString))
+          sendMessageStreaming[Res](entityId, msg(StreamReplier(uuid.toString)), Some(uuid.toString))
         }
 
       private def sendMessage[Res](entityId: String, msg: Msg, replyId: Option[String]): Task[Option[Res]] =

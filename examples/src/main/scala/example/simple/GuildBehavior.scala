@@ -1,6 +1,6 @@
 package example.simple
 
-import com.devsisters.shardcake.{ EntityType, Replier, Sharding }
+import com.devsisters.shardcake.{ EntityType, Replier, Sharding, StreamReplier }
 import zio.stream.ZStream
 import zio.{ Dequeue, RIO, Ref, ZIO }
 
@@ -13,7 +13,7 @@ object GuildBehavior {
     case class Join(userId: String, replier: Replier[Try[Set[String]]]) extends GuildMessage
     case class Timeout(replier: Replier[Try[Set[String]]])              extends GuildMessage
     case class Leave(userId: String)                                    extends GuildMessage
-    case class Stream(replier: Replier[String])                         extends GuildMessage
+    case class Stream(replier: StreamReplier[String])                   extends GuildMessage
   }
 
   object Guild extends EntityType[GuildMessage]("guild")

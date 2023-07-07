@@ -83,10 +83,10 @@ object CounterActor {
   sealed trait CounterMessage
 
   object CounterMessage {
-    case class GetCounter(replier: Replier[Int])       extends CounterMessage
-    case object IncrementCounter                       extends CounterMessage
-    case object DecrementCounter                       extends CounterMessage
-    case class StreamingChanges(replier: Replier[Int]) extends CounterMessage
+    case class GetCounter(replier: Replier[Int])             extends CounterMessage
+    case object IncrementCounter                             extends CounterMessage
+    case object DecrementCounter                             extends CounterMessage
+    case class StreamingChanges(replier: StreamReplier[Int]) extends CounterMessage
   }
 
   object Counter extends EntityType[CounterMessage]("counter")
