@@ -50,7 +50,7 @@ private[shardcake] object EntityManager {
       (for {
         _ <- Clock.sleep(entityMaxIdleTime getOrElse config.entityMaxIdleTime)
         _ <- terminateEntity(entityId).forkDaemon.unit // fork daemon otherwise it will interrupt itself
-      } yield ()).forkDaemon
+      } yield ()).interruptible.forkDaemon
 
     private def terminateEntity(entityId: String): UIO[Unit] =
       entities.updateZIO(map =>

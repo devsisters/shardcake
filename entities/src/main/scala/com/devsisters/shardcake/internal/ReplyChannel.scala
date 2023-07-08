@@ -1,7 +1,7 @@
 package com.devsisters.shardcake.internal
 
 import zio.stream.{ Take, ZStream }
-import zio.{ Cause, Promise, Queue, Task, UIO }
+import zio.{ Cause, Promise, Queue, Task, UIO, ZIO }
 
 private[shardcake] sealed trait ReplyChannel[-A] { self =>
   val await: UIO[Unit]
@@ -18,7 +18,11 @@ private[shardcake] object ReplyChannel {
     def fail(cause: Cause[Throwable]): UIO[Unit]                   = queue.offer(Take.failCause(cause)).exit.unit
     def replySingle(a: A): UIO[Unit]                               = queue.offer(Take.single(a)).exit *> end
     def replyStream(stream: ZStream[Any, Throwable, A]): UIO[Unit] =
-      (stream.runForeach(a => queue.offer(Take.single(a))) *> end).catchAllCause(fail).fork.unit
+      (stream
+        .runForeach(a => queue.offer(Take.single(a))))
+        .onExit(e => queue.offer(e.foldExit(Take.failCause, _ => Take.end)))
+        .fork
+        .unit
     val output: ZStream[Any, Throwable, A]                         = ZStream.fromQueueWithShutdown(queue).flattenTake.onError(fail)
   }
 
