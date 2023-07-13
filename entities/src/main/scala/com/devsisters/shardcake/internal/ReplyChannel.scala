@@ -19,10 +19,8 @@ private[shardcake] object ReplyChannel {
     def replySingle(a: A): UIO[Unit]                               = queue.offer(Take.single(a)).exit *> end
     def replyStream(stream: ZStream[Any, Throwable, A]): UIO[Unit] =
       (stream
-        .runForeach(a => queue.offer(Take.single(a))))
-        .onExit(e => queue.offer(e.foldExit(Take.failCause, _ => Take.end)))
-        .fork
-        .unit
+        .runForeach(a => queue.offer(Take.single(a)))
+        .onExit(e => queue.offer(e.foldExit(Take.failCause, _ => Take.end))) race await).fork.unit
     val output: ZStream[Any, Throwable, A]                         = ZStream.fromQueueWithShutdown(queue).flattenTake.onError(fail)
   }
 
