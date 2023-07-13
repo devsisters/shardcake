@@ -46,6 +46,21 @@ object ShardingSpec extends ZIOSpecDefault {
           } yield assertTrue(items == Chunk(0, 1, 0, 1, 2))
         }
       },
+      test("Streaming interruption") {
+        ZIO.scoped {
+          for {
+            _       <- Sharding.registerEntity(Counter, behavior)
+            _       <- Sharding.registerScoped
+            counter <- Sharding.messenger(Counter)
+            stream  <- counter.sendStream("c1")(StreamingChanges(_))
+            latch   <- Promise.make[Nothing, Unit]
+            fiber   <- stream.take(2).tap(_ => latch.succeed(())).runCollect.fork
+            _       <- latch.await
+            _       <- fiber.interrupt
+            res     <- counter.send("c1")(GetCounter.apply)
+          } yield assertTrue(res == -1)
+        }
+      },
       test("Entity termination") {
         ZIO.scoped {
           for {
@@ -100,7 +115,8 @@ object CounterActor {
             case CounterMessage.GetCounter(replier)       => state.get.flatMap(replier.reply)
             case CounterMessage.IncrementCounter          => state.update(_ + 1)
             case CounterMessage.DecrementCounter          => state.update(_ - 1)
-            case CounterMessage.StreamingChanges(replier) => replier.replyStream(state.changes)
+            case CounterMessage.StreamingChanges(replier) =>
+              replier.replyStream(state.changes.ensuring(state.set(-1)))
           }.forever
         )
 }
