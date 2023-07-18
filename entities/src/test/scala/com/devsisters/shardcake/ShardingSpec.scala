@@ -57,6 +57,7 @@ object ShardingSpec extends ZIOSpecDefault {
             fiber   <- stream.take(2).tap(_ => latch.succeed(())).runCollect.fork
             _       <- latch.await
             _       <- fiber.interrupt
+            _       <- Clock.sleep(1 second)
             res     <- counter.send("c1")(GetCounter.apply)
           } yield assertTrue(res == -1)
         }
