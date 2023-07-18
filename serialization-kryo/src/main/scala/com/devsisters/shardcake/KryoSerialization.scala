@@ -25,7 +25,7 @@ object KryoSerialization {
       new ScalaKryoSerializer(config, getClass.getClassLoader)
     }.map(serializer =>
       new Serialization {
-        def encode(message: Any): Task[Array[Byte]] = ZIO.fromTry(serializer.serialize(message.asInstanceOf[AnyRef]))
+        def encode(message: Any): Task[Array[Byte]] = ZIO.fromTry(serializer.serialize(message))
         def decode[A](bytes: Array[Byte]): Task[A]  = ZIO.fromTry(serializer.deserialize[A](bytes))
       }
     )
