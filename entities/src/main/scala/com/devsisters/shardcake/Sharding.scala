@@ -165,12 +165,12 @@ class Sharding private (
     } yield bytes
 
   def sendToLocalEntityStreamingReply(msg: BinaryMessage): ZStream[Any, Throwable, Array[Byte]] =
-    ZStream.fromZIO {
+    ZStream.unwrap {
       for {
         replyChannel <- ReplyChannel.stream[Any]
         _            <- sendToLocalEntity(msg, replyChannel)
       } yield replyChannel.output.mapZIO(serialization.encode)
-    }.flatten
+    }
 
   def sendToLocalEntity(msg: BinaryMessage, replyChannel: ReplyChannel[Nothing]): Task[Unit] =
     entityStates.get.flatMap(_.get(msg.entityType) match {
