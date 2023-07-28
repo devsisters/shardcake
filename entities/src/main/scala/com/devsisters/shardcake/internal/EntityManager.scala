@@ -18,16 +18,18 @@ private[shardcake] trait EntityManager[-Req] {
 }
 
 private[shardcake] object EntityManager {
+  private type Signal = Promise[Nothing, Unit]
+
   def make[R, Req: Tag](
     recipientType: RecipientType[Req],
     behavior: (String, Queue[Req]) => RIO[R, Nothing],
-    terminateMessage: Promise[Nothing, Unit] => Option[Req],
+    terminateMessage: Signal => Option[Req],
     sharding: Sharding,
     config: Config,
     entityMaxIdleTime: Option[Duration]
   ): URIO[R with Clock, EntityManager[Req]] =
     for {
-      entities <- RefM.make[Map[String, (Option[Queue[Req]], Fiber[Nothing, Unit])]](Map())
+      entities <- RefM.make[Map[String, (Either[Queue[Req], Signal], Fiber[Nothing, Unit])]](Map())
       env      <- ZIO.environment[R]
       clock    <- ZIO.service[Clock.Service]
     } yield new EntityManagerLive[Req](
@@ -44,8 +46,8 @@ private[shardcake] object EntityManager {
   class EntityManagerLive[Req](
     recipientType: RecipientType[Req],
     behavior: (String, Queue[Req]) => Task[Nothing],
-    terminateMessage: Promise[Nothing, Unit] => Option[Req],
-    entities: RefM[Map[String, (Option[Queue[Req]], Fiber[Nothing, Unit])]],
+    terminateMessage: Signal => Option[Req],
+    entities: RefM[Map[String, (Either[Queue[Req], Signal], Fiber[Nothing, Unit])]],
     sharding: Sharding,
     config: Config,
     entityMaxIdleTime: Option[Duration],
@@ -60,14 +62,14 @@ private[shardcake] object EntityManager {
     private def terminateEntity(entityId: String): UIO[Unit] =
       entities.update(map =>
         map.get(entityId) match {
-          case Some((Some(queue), interruptionFiber)) =>
+          case Some((Left(queue), interruptionFiber)) =>
             Promise
               .make[Nothing, Unit]
               .flatMap { p =>
                 terminateMessage(p) match {
                   case Some(msg) =>
                     // if a queue is found, offer the termination message, and set the queue to None so that no new message is enqueued
-                    queue.offer(msg).run.as(map.updated(entityId, (None, interruptionFiber)))
+                    queue.offer(msg).run.as(map.updated(entityId, (Right(p), interruptionFiber)))
                   case None      =>
                     queue.shutdown.as(map - entityId)
                 }
@@ -96,13 +98,13 @@ private[shardcake] object EntityManager {
         // find the queue for that entity, or create it if needed
         queue <- entities.modify(map =>
                    map.get(entityId) match {
-                     case Some((queue @ Some(_), expirationFiber)) =>
+                     case Some((queue @ Left(_), expirationFiber)) =>
                        // queue exists, delay the interruption fiber and return the queue
                        expirationFiber.interrupt *>
                          startExpirationFiber(entityId).map(fiber => (queue, map.updated(entityId, (queue, fiber))))
-                     case Some((None, _))                          =>
+                     case Some((p @ Right(_), _))                  =>
                        // the queue is shutting down, stash and retry
-                       ZIO.succeed((None, map))
+                       ZIO.succeed((p, map))
                      case None                                     =>
                        sharding.isShuttingDown.flatMap {
                          case true  =>
@@ -121,16 +123,16 @@ private[shardcake] object EntityManager {
                                                       queue.shutdown *> expirationFiber.interrupt
                                                   )
                                                   .forkDaemon
-                             someQueue        = Some(queue)
-                           } yield (someQueue, map.updated(entityId, (someQueue, expirationFiber)))
+                             leftQueue        = Left(queue)
+                           } yield (leftQueue, map.updated(entityId, (leftQueue, expirationFiber)))
                        }
                    }
                  )
         _     <- queue match {
-                   case None        =>
+                   case Right(_)    =>
                      // the queue is shutting down, try again a little later
                      clock.sleep(100 millis) *> send(entityId, req, replyId, promise)
-                   case Some(queue) =>
+                   case Left(queue) =>
                      // add the message to the queue and setup the response promise if needed
                      (replyId match {
                        case Some(replyId) => sharding.initReply(replyId, promise) *> queue.offer(req)
@@ -152,21 +154,21 @@ private[shardcake] object EntityManager {
       entities.getAndSet(Map()).flatMap(terminateEntities)
 
     private def terminateEntities(
-      entitiesToTerminate: Map[String, (Option[Queue[Req]], Fiber[Nothing, Unit])]
+      entitiesToTerminate: Map[String, (Either[Queue[Req], Signal], Fiber[Nothing, Unit])]
     ): UIO[Unit] =
       for {
         // send termination message to all entities
         promises <- ZIO.foreach(entitiesToTerminate.toList) { case (_, (queue, _)) =>
                       Promise
                         .make[Nothing, Unit]
-                        .tap(p =>
+                        .flatMap(p =>
                           queue match {
-                            case Some(queue) =>
-                              terminateMessage(p) match {
+                            case Left(queue) =>
+                              (terminateMessage(p) match {
                                 case Some(terminate) => queue.offer(terminate).catchAllCause(_ => p.succeed(()))
                                 case None            => queue.shutdown *> p.succeed(())
-                              }
-                            case None        => p.succeed(())
+                              }).as(p)
+                            case Right(p)    => ZIO.succeed(p)
                           }
                         )
                     }
