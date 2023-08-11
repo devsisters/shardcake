@@ -77,8 +77,8 @@ The first thing we need to do is starting the Shard Manager. This component is a
 To make it simpler and run our example without 3rd parties, we're going to run a simple `PodsHealth` implementation that just pings a pod to see if it's alive, and in-memory `Storage`.
 We need a proper messaging protocol to communicate with pods, so we're going to use `shardcake-protocol-grpc`.
 ```
-libraryDependencies += "com.devsisters" %% "shardcake-manager"       % "2.0.0"
-libraryDependencies += "com.devsisters" %% "shardcake-protocol-grpc" % "2.0.0"
+libraryDependencies += "com.devsisters" %% "shardcake-manager"       % "2.1.0"
+libraryDependencies += "com.devsisters" %% "shardcake-protocol-grpc" % "2.1.0"
 ```
 The Shard Manager exposes a small GraphQL API, which means we need to start a small webserver. This can be done by calling `Server.run` and providing all the required dependencies.
 ```scala
@@ -105,8 +105,8 @@ We now need to define our **entity behavior**: what kind of messages can our ent
 
 First, we need the following dependencies:
 ```
-libraryDependencies += "com.devsisters" %% "shardcake-entities"      % "2.0.0"
-libraryDependencies += "com.devsisters" %% "shardcake-protocol-grpc" % "2.0.0"
+libraryDependencies += "com.devsisters" %% "shardcake-entities"      % "2.1.0"
+libraryDependencies += "com.devsisters" %% "shardcake-protocol-grpc" % "2.1.0"
 ```
 
 Let's start with defining the messages our entities can receive. We will have 2: one for joining a guild and one for leaving.
@@ -128,9 +128,9 @@ object Guild extends EntityType[GuildMessage]("guild")
 
 The behavior itself is a function with the following signature:
 ```scala
-def behavior(entityId: String, messages: Dequeue[GuildMessage]): RIO[Sharding, Nothing]
+def behavior(entityId: String, messages: Queue[GuildMessage]): RIO[Sharding, Nothing]
 ```
-It takes an `entityId` and a `Dequeue[GuildMessage]` (a queue of `GuildMessage` that you can only consume) and returns a `ZIO` that never ends (hence the return type `Nothing`).
+It takes an `entityId` and a `Queue[GuildMessage]` and returns a `ZIO` that never ends (hence the return type `Nothing`).
 That function is just supposed to consume `messages` forever.
 
 Let's first define how to handle a single `GuildMessage`.
@@ -157,7 +157,7 @@ def handleMessage(state: Ref[Set[String]], message: GuildMessage): RIO[Sharding,
 
 We are now ready to create our behavior, starting from an empty state when the entity is created:
 ```scala
-def behavior(entityId: String, messages: Dequeue[GuildMessage]): RIO[Sharding, Nothing] =
+def behavior(entityId: String, messages: Queue[GuildMessage]): RIO[Sharding, Nothing] =
   Ref
     .make(Set.empty[String])
     .flatMap(state => messages.take.flatMap(handleMessage(state, _)).forever)
