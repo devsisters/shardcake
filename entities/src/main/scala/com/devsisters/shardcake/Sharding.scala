@@ -86,8 +86,9 @@ class Sharding private (
       }
       .unit
 
-  def registerSingleton(name: String, run: UIO[Nothing]): UIO[Unit] =
-    singletons.update(list => (name, run, None) :: list) <* startSingletonsIfNeeded *>
+  def registerSingleton[R](name: String, run: URIO[R, Nothing]): URIO[R, Unit] =
+    ZIO.environment[R].flatMap(env => singletons.update(list => (name, run.provideEnvironment(env), None) :: list)) <*
+      startSingletonsIfNeeded *>
       eventsHub.publish(ShardingRegistrationEvent.SingletonRegistered(name)).unit
 
   private[shardcake] def assign(shards: Set[ShardId]): UIO[Unit] =
@@ -488,8 +489,8 @@ object Sharding {
    * Start a computation that is guaranteed to run only on a single pod.
    * Each pod should call `registerSingleton` but only a single pod will actually run it at any given time.
    */
-  def registerSingleton(name: String, run: UIO[Nothing]): URIO[Sharding, Unit] =
-    ZIO.serviceWithZIO[Sharding](_.registerSingleton(name, run))
+  def registerSingleton[R](name: String, run: URIO[R, Nothing]): URIO[Sharding with R, Unit] =
+    ZIO.serviceWithZIO[Sharding](_.registerSingleton[R](name, run))
 
   /**
    * Register a new entity type, allowing pods to send messages to entities of this type.
