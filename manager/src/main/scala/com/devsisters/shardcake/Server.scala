@@ -19,9 +19,9 @@ object Server {
       interpreter <- (GraphQLApi.api @@ printErrors).interpreter
       routes       = Http
                        .collectHttp[Request] {
-                         case _ -> !! / "health"          => Handler.ok.toHttp
-                         case _ -> !! / "api" / "graphql" => ZHttpAdapter.makeHttpService(HttpInterpreter(interpreter))
-                         case _ -> !! / "ws" / "graphql"  =>
+                         case _ -> Root / "health"          => Handler.ok.toHttp
+                         case _ -> Root / "api" / "graphql" => ZHttpAdapter.makeHttpService(HttpInterpreter(interpreter))
+                         case _ -> Root / "ws" / "graphql"  =>
                            ZHttpAdapter.makeWebSocketService(WebSocketInterpreter(interpreter))
                        } @@ HttpAppMiddleware.cors()
       nothing     <-
