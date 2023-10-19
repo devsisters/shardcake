@@ -19,24 +19,21 @@ object Server {
       interpreter <- (GraphQLApi.api @@ printErrors).interpreter
       routes       = Http
                        .collectHttp[Request] {
-                         case _ -> !! / "health"          => Handler.ok.toHttp
-                         case _ -> !! / "api" / "graphql" => ZHttpAdapter.makeHttpService(HttpInterpreter(interpreter))
-                         case _ -> !! / "ws" / "graphql"  =>
+                         case _ -> Root / "health"          => Handler.ok.toHttp
+                         case _ -> Root / "api" / "graphql" => ZHttpAdapter.makeHttpService(HttpInterpreter(interpreter))
+                         case _ -> Root / "ws" / "graphql"  =>
                            ZHttpAdapter.makeWebSocketService(WebSocketInterpreter(interpreter))
                        } @@ HttpAppMiddleware.cors()
-      nothing     <-
-        ZIO
-          .scoped(
-            ZServer
-              .serve(routes)
-              .flatMap(port =>
-                ZIO.logInfo(s"Shard Manager server started on port $port.") *>
-                  ZIO.never
-              )
-              .provideSomeLayer[ShardManager with Scope](
-                ZServer.defaultWithPort(config.apiPort)
-              )
-          )
-          .forever
+      _           <- ZIO.logInfo(s"Shard Manager server started on port ${config.apiPort}.")
+      nothing     <- ZServer
+                       .serve(routes)
+                       .provideSome[ShardManager](
+                         ZServer.live,
+                         ZLayer.succeed(
+                           ZServer.Config.default
+                             .port(config.apiPort)
+                             .withWebSocketConfig(ZHttpAdapter.defaultWebSocketConfig)
+                         )
+                       )
     } yield nothing
 }
