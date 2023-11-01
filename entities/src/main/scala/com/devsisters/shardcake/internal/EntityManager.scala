@@ -117,18 +117,17 @@ private[shardcake] object EntityManager {
                    case Some(queue @ Left(_)) => ZIO.succeed(queue)
                    case _                     => getOrCreateQueue(entityId)
                  }
-        cdt   <- currentTimeInMilliseconds
-        _     <- entitiesLastReceivedAt.update(_ + (entityId -> cdt)).when(queue.isLeft)
         _     <- queue match {
                    case Right(_)    =>
                      // the queue is shutting down, try again a little later
                      Clock.sleep(100 millis) *> send(entityId, req, replyId, replyChannel)
                    case Left(queue) =>
-                     // add the message to the queue and setup the reply channel if needed
-                     (replyId match {
-                       case Some(replyId) => sharding.initReply(replyId, replyChannel) *> queue.offer(req)
-                       case None          => queue.offer(req) *> replyChannel.end
-                     }).catchAllCause(_ => send(entityId, req, replyId, replyChannel))
+                     currentTimeInMilliseconds.flatMap(cdt => entitiesLastReceivedAt.update(_ + (entityId -> cdt))) *>
+                       // add the message to the queue and setup the reply channel if needed
+                       (replyId match {
+                         case Some(replyId) => sharding.initReply(replyId, replyChannel) *> queue.offer(req)
+                         case None          => queue.offer(req) *> replyChannel.end
+                       }).catchAllCause(_ => send(entityId, req, replyId, replyChannel))
                  }
       } yield ()
 
