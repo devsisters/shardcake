@@ -4,6 +4,8 @@ import com.devsisters.shardcake.errors.EntityNotManagedByThisPod
 import com.devsisters.shardcake._
 import zio.{ Config => _, _ }
 
+import java.util.concurrent.TimeUnit
+
 private[shardcake] trait EntityManager[-Req] {
   def send(
     entityId: String,
@@ -27,7 +29,7 @@ private[shardcake] object EntityManager {
     entityMaxIdleTime: Option[Duration]
   ): URIO[R, EntityManager[Req]] =
     for {
-      entities <- Ref.Synchronized.make[Map[String, (Either[Queue[Req], Signal], Fiber[Nothing, Unit])]](Map())
+      entities <- Ref.Synchronized.make[Map[String, (Either[Queue[Req], Signal], Long)]](Map())
       env      <- ZIO.environment[R]
     } yield new EntityManagerLive[Req](
       recipientType,
@@ -43,33 +45,44 @@ private[shardcake] object EntityManager {
     recipientType: RecipientType[Req],
     behavior: (String, Queue[Req]) => Task[Nothing],
     terminateMessage: Signal => Option[Req],
-    entities: Ref.Synchronized[Map[String, (Either[Queue[Req], Signal], Fiber[Nothing, Unit])]],
+    entities: Ref.Synchronized[Map[String, (Either[Queue[Req], Signal], Long)]],
     sharding: Sharding,
     config: Config,
     entityMaxIdleTime: Option[Duration]
   ) extends EntityManager[Req] {
-    private def startExpirationFiber(entityId: String): UIO[Fiber[Nothing, Unit]] =
+    private def startExpirationFiber(entityId: String): UIO[Fiber[Nothing, Unit]] = {
+      val maxIdleTime                                                                                = entityMaxIdleTime getOrElse config.entityMaxIdleTime
+      def sleep(duration: Duration, map: Map[String, (Either[Queue[Req], Signal], Long)]): UIO[Unit] = for {
+        _             <- Clock.sleep(duration)
+        cdt           <- Clock.currentTime(TimeUnit.MILLISECONDS)
+        lastReceivedAt = map.get(entityId).map { case (_, lastReceivedAt) => lastReceivedAt }.getOrElse(0L)
+        remaining      = maxIdleTime minus Duration.fromMillis(cdt - lastReceivedAt)
+        _             <- sleep(remaining, map).unless(remaining.isNegative)
+      } yield ()
+
       (for {
-        _ <- Clock.sleep(entityMaxIdleTime getOrElse config.entityMaxIdleTime)
+        map <- entities.get
+        _   <- sleep(maxIdleTime, map)
         _ <- terminateEntity(entityId).forkDaemon.unit // fork daemon otherwise it will interrupt itself
       } yield ()).interruptible.forkDaemon
+    }
 
     private def terminateEntity(entityId: String): UIO[Unit] =
       entities.updateZIO(map =>
         map.get(entityId) match {
-          case Some((Left(queue), interruptionFiber)) =>
+          case Some((Left(queue), lastReceivedAt)) =>
             Promise
               .make[Nothing, Unit]
               .flatMap { p =>
                 terminateMessage(p) match {
                   case Some(msg) =>
                     // if a queue is found, offer the termination message, and set the queue to None so that no new message is enqueued
-                    queue.offer(msg).exit.as(map.updated(entityId, (Right(p), interruptionFiber)))
+                    queue.offer(msg).exit.as(map.updated(entityId, (Right(p), lastReceivedAt)))
                   case None      =>
                     queue.shutdown.as(map - entityId)
                 }
               }
-          case _                                      =>
+          case _                                   =>
             // if no queue is found, do nothing
             ZIO.succeed(map)
         }
@@ -93,14 +106,13 @@ private[shardcake] object EntityManager {
         // find the queue for that entity, or create it if needed
         queue <- entities.modifyZIO(map =>
                    map.get(entityId) match {
-                     case Some((queue @ Left(_), expirationFiber)) =>
+                     case Some((queue @ Left(_), _)) =>
                        // queue exists, delay the interruption fiber and return the queue
-                       expirationFiber.interrupt *>
-                         startExpirationFiber(entityId).map(fiber => (queue, map.updated(entityId, (queue, fiber))))
-                     case Some((p @ Right(_), _))                  =>
+                       Clock.currentTime(TimeUnit.MILLISECONDS).map(cdt => (queue, map.updated(entityId, (queue, cdt))))
+                     case Some((p @ Right(_), _))    =>
                        // the queue is shutting down, stash and retry
                        ZIO.succeed((p, map))
-                     case None                                     =>
+                     case None                       =>
                        sharding.isShuttingDown.flatMap {
                          case true  =>
                            // don't start any fiber while sharding is shutting down
@@ -117,8 +129,9 @@ private[shardcake] object EntityManager {
                                                     entities.update(_ - entityId) *> queue.shutdown *> expirationFiber.interrupt
                                                   )
                                                   .forkDaemon
+                             cdt             <- Clock.currentTime(TimeUnit.MILLISECONDS)
                              leftQueue        = Left(queue)
-                           } yield (leftQueue, map.updated(entityId, (leftQueue, expirationFiber)))
+                           } yield (leftQueue, map.updated(entityId, (leftQueue, cdt)))
                        }
                    }
                  )
@@ -146,7 +159,7 @@ private[shardcake] object EntityManager {
       entities.getAndSet(Map()).flatMap(terminateEntities)
 
     private def terminateEntities(
-      entitiesToTerminate: Map[String, (Either[Queue[Req], Signal], Fiber[Nothing, Unit])]
+      entitiesToTerminate: Map[String, (Either[Queue[Req], Signal], Long)]
     ): UIO[Unit] =
       for {
         // send termination message to all entities
