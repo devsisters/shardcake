@@ -29,7 +29,7 @@ private[shardcake] object EntityManager {
     entityMaxIdleTime: Option[Duration]
   ): URIO[R, EntityManager[Req]] =
     for {
-      entities <- Ref.Synchronized.make[Map[String, (Either[Queue[Req], Signal], Long)]](Map())
+      entities <- Ref.Synchronized.make[Map[String, (Either[Queue[Req], Signal], EpochMillis)]](Map())
       env      <- ZIO.environment[R]
     } yield new EntityManagerLive[Req](
       recipientType,
@@ -41,28 +41,32 @@ private[shardcake] object EntityManager {
       entityMaxIdleTime
     )
 
+  private def currentTimeInMilliseconds: UIO[EpochMillis] =
+    Clock.currentTime(TimeUnit.MILLISECONDS)
+
   class EntityManagerLive[Req](
     recipientType: RecipientType[Req],
     behavior: (String, Queue[Req]) => Task[Nothing],
     terminateMessage: Signal => Option[Req],
-    entities: Ref.Synchronized[Map[String, (Either[Queue[Req], Signal], Long)]],
+    entities: Ref.Synchronized[Map[String, (Either[Queue[Req], Signal], EpochMillis)]],
     sharding: Sharding,
     config: Config,
     entityMaxIdleTime: Option[Duration]
   ) extends EntityManager[Req] {
     private def startExpirationFiber(entityId: String): UIO[Fiber[Nothing, Unit]] = {
-      val maxIdleTime                                                                                = entityMaxIdleTime getOrElse config.entityMaxIdleTime
-      def sleep(duration: Duration, map: Map[String, (Either[Queue[Req], Signal], Long)]): UIO[Unit] = for {
+      val maxIdleTime = entityMaxIdleTime getOrElse config.entityMaxIdleTime
+
+      def sleep(duration: Duration): UIO[Unit] = for {
         _             <- Clock.sleep(duration)
-        cdt           <- Clock.currentTime(TimeUnit.MILLISECONDS)
+        cdt           <- currentTimeInMilliseconds
+        map           <- entities.get
         lastReceivedAt = map.get(entityId).map { case (_, lastReceivedAt) => lastReceivedAt }.getOrElse(0L)
         remaining      = maxIdleTime minus Duration.fromMillis(cdt - lastReceivedAt)
-        _             <- sleep(remaining, map).unless(remaining.isNegative)
+        _             <- sleep(remaining).when(remaining > Duration.Zero)
       } yield ()
 
       (for {
-        map <- entities.get
-        _   <- sleep(maxIdleTime, map)
+        _ <- sleep(maxIdleTime)
         _ <- terminateEntity(entityId).forkDaemon.unit // fork daemon otherwise it will interrupt itself
       } yield ()).interruptible.forkDaemon
     }
@@ -108,7 +112,7 @@ private[shardcake] object EntityManager {
                    map.get(entityId) match {
                      case Some((queue @ Left(_), _)) =>
                        // queue exists, delay the interruption fiber and return the queue
-                       Clock.currentTime(TimeUnit.MILLISECONDS).map(cdt => (queue, map.updated(entityId, (queue, cdt))))
+                       currentTimeInMilliseconds.map(cdt => (queue, map.updated(entityId, (queue, cdt))))
                      case Some((p @ Right(_), _))    =>
                        // the queue is shutting down, stash and retry
                        ZIO.succeed((p, map))
@@ -129,7 +133,7 @@ private[shardcake] object EntityManager {
                                                     entities.update(_ - entityId) *> queue.shutdown *> expirationFiber.interrupt
                                                   )
                                                   .forkDaemon
-                             cdt             <- Clock.currentTime(TimeUnit.MILLISECONDS)
+                             cdt             <- currentTimeInMilliseconds
                              leftQueue        = Left(queue)
                            } yield (leftQueue, map.updated(entityId, (leftQueue, cdt)))
                        }
@@ -159,7 +163,7 @@ private[shardcake] object EntityManager {
       entities.getAndSet(Map()).flatMap(terminateEntities)
 
     private def terminateEntities(
-      entitiesToTerminate: Map[String, (Either[Queue[Req], Signal], Long)]
+      entitiesToTerminate: Map[String, (Either[Queue[Req], Signal], EpochMillis)]
     ): UIO[Unit] =
       for {
         // send termination message to all entities
