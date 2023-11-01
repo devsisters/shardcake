@@ -75,6 +75,22 @@ object ShardingSpec extends ZIOSpecDefault {
           } yield assertTrue(c0 == 1, c1 == 0)
         }
       },
+      test("Entity termination with extension") {
+        ZIO.scoped {
+          for {
+            _       <- Sharding.registerEntity(Counter, behavior, entityMaxIdleTime = Some(3.seconds))
+            _       <- Sharding.registerScoped
+            counter <- Sharding.messenger(Counter)
+            _       <- counter.sendDiscard("c3")(IncrementCounter)
+            c0      <- counter.send("c3")(GetCounter.apply)
+            _       <- Clock.sleep(2 seconds)
+            _       <- counter.sendDiscard("c3")(IncrementCounter)
+            c1      <- counter.send("c3")(GetCounter.apply)
+            _       <- Clock.sleep(4 seconds)
+            c2 <- counter.send("c3")(GetCounter.apply) // counter should be restarted
+          } yield assertTrue(c0 == 1, c1 == 2, c2 == 0)
+        }
+      },
       test("Cluster singleton") {
         ZIO.scoped {
           for {
