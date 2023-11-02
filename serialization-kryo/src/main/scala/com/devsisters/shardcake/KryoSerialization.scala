@@ -3,7 +3,7 @@ package com.devsisters.shardcake
 import com.devsisters.shardcake.interfaces.Serialization
 import com.typesafe.config.{ Config, ConfigFactory }
 import io.altoo.serialization.kryo.scala.ScalaKryoSerializer
-import zio.{ Task, ZIO, ZLayer }
+import zio.{ Chunk, Task, ZIO, ZLayer }
 
 object KryoSerialization {
 
@@ -25,8 +25,12 @@ object KryoSerialization {
       new ScalaKryoSerializer(config, getClass.getClassLoader)
     }.map(serializer =>
       new Serialization {
-        def encode(message: Any): Task[Array[Byte]] = ZIO.fromTry(serializer.serialize(message))
-        def decode[A](bytes: Array[Byte]): Task[A]  = ZIO.fromTry(serializer.deserialize[A](bytes))
+        def encode(message: Any): Task[Array[Byte]]                              = ZIO.fromTry(serializer.serialize(message))
+        def decode[A](bytes: Array[Byte]): Task[A]                               = ZIO.fromTry(serializer.deserialize[A](bytes))
+        override def encodeChunk(messages: Chunk[Any]): Task[Chunk[Array[Byte]]] =
+          ZIO.attempt(messages.map(serializer.serialize(_).get))
+        override def decodeChunk[A](bytes: Chunk[Array[Byte]]): Task[Chunk[A]]   =
+          ZIO.attempt(bytes.map(serializer.deserialize[A](_).get))
       }
     )
 }

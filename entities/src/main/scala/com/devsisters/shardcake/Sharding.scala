@@ -21,7 +21,7 @@ class Sharding private (
   shardAssignments: Ref[Map[ShardId, PodAddress]],
   entityStates: Ref[Map[String, EntityState]],
   singletons: Ref.Synchronized[List[(String, UIO[Nothing], Option[Fiber[Nothing, Nothing]])]],
-  replyChannels: Ref.Synchronized[Map[String, ReplyChannel[Nothing]]], // channel for each pending reply,
+  replyChannels: Ref[Map[String, ReplyChannel[Nothing]]], // channel for each pending reply,
   lastUnhealthyNodeReported: Ref[OffsetDateTime],
   isShuttingDownRef: Ref[Boolean],
   shardManager: ShardManagerClient,
@@ -170,10 +170,10 @@ class Sharding private (
       for {
         replyChannel <- ReplyChannel.stream[Any]
         _            <- sendToLocalEntity(msg, replyChannel)
-      } yield replyChannel.output.mapZIO(serialization.encode)
+      } yield replyChannel.output.mapChunksZIO(serialization.encodeChunk)
     }
 
-  def sendToLocalEntity(msg: BinaryMessage, replyChannel: ReplyChannel[Nothing]): Task[Unit] =
+  private def sendToLocalEntity(msg: BinaryMessage, replyChannel: ReplyChannel[Nothing]): Task[Unit] =
     entityStates.get.flatMap(_.get(msg.entityType) match {
       case Some(state) => state.processBinary(msg, replyChannel).unit
       case None        => ZIO.fail(new Exception(s"Entity type ${msg.entityType} was not registered."))
@@ -184,18 +184,14 @@ class Sharding private (
       replyChannel.await.ensuring(replyChannels.update(_ - id)).forkDaemon
 
   def reply[Reply](reply: Reply, replier: Replier[Reply]): UIO[Unit] =
-    replyChannels.updateZIO(repliers =>
-      ZIO
-        .whenCase(repliers.get(replier.id)) { case Some(q) => q.asInstanceOf[ReplyChannel[Reply]].replySingle(reply) }
-        .as(repliers - replier.id)
-    )
+    replyChannels
+      .modify(repliers => (repliers.get(replier.id), repliers - replier.id))
+      .flatMap(ZIO.foreachDiscard(_)(_.asInstanceOf[ReplyChannel[Reply]].replySingle(reply)))
 
   def replyStream[Reply](replies: ZStream[Any, Nothing, Reply], replier: StreamReplier[Reply]): UIO[Unit] =
-    replyChannels.updateZIO(repliers =>
-      ZIO
-        .whenCase(repliers.get(replier.id)) { case Some(q) => q.asInstanceOf[ReplyChannel[Reply]].replyStream(replies) }
-        .as(repliers - replier.id)
-    )
+    replyChannels
+      .modify(repliers => (repliers.get(replier.id), repliers - replier.id))
+      .flatMap(ZIO.foreachDiscard(_)(_.asInstanceOf[ReplyChannel[Reply]].replyStream(replies)))
 
   private def sendToPod[Msg, Res](
     recipientTypeName: String,
@@ -252,7 +248,10 @@ class Sharding private (
               }
             case _: ReplyChannel.FromQueue[_]   =>
               replyChannel.replyStream(
-                pods.sendMessageStreaming(pod, binaryMessage).tapError(errorHandling).mapZIO(serialization.decode[Res])
+                pods
+                  .sendMessageStreaming(pod, binaryMessage)
+                  .tapError(errorHandling)
+                  .mapChunksZIO(serialization.decodeChunk[Res])
               )
           }
         }
@@ -442,7 +441,7 @@ object Sharding {
                                            }
                                          )
                                        )
-        replyChannels             <- Ref.Synchronized.make[Map[String, ReplyChannel[Nothing]]](Map())
+        replyChannels             <- Ref.make[Map[String, ReplyChannel[Nothing]]](Map())
         cdt                       <- Clock.currentDateTime
         lastUnhealthyNodeReported <- Ref.make(cdt)
         shuttingDown              <- Ref.make(false)

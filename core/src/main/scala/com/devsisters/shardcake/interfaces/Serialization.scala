@@ -1,6 +1,6 @@
 package com.devsisters.shardcake.interfaces
 
-import zio.{ Task, ULayer, ZIO, ZLayer }
+import zio.{ Chunk, Task, ULayer, ZIO, ZLayer }
 
 import java.io.{ ByteArrayInputStream, ByteArrayOutputStream, ObjectInputStream, ObjectOutputStream }
 
@@ -18,6 +18,18 @@ trait Serialization {
    * Transform binary back into the given type
    */
   def decode[A](bytes: Array[Byte]): Task[A]
+
+  /**
+   * Transforms a chunk of messages into binary
+   */
+  def encodeChunk(messages: Chunk[Any]): Task[Chunk[Array[Byte]]] =
+    ZIO.foreach(messages)(encode)
+
+  /**
+   * Transforms a chunk of binary back into the given type
+   */
+  def decodeChunk[A](bytes: Chunk[Array[Byte]]): Task[Chunk[A]] =
+    ZIO.foreach(bytes)(decode[A])
 }
 
 object Serialization {
