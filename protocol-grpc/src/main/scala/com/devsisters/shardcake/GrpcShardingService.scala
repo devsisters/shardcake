@@ -35,8 +35,7 @@ abstract class GrpcShardingService(sharding: Sharding, timeout: Duration) extend
       .sendToLocalEntityStreamingReply(
         BinaryMessage(request.entityId, request.entityType, request.body.toByteArray, request.replyId)
       )
-      .map(ByteString.copyFrom)
-      .mapBoth(mapErrorToStatusWithInternalDetails, SendResponse(_))
+      .mapBoth(mapErrorToStatusWithInternalDetails, bytes => SendResponse(ByteString.copyFrom(bytes)))
 
   def pingShards(request: PingShardsRequest): ZIO[Any, StatusException, PingShardsResponse] =
     ZIO.succeed(PingShardsResponse())
