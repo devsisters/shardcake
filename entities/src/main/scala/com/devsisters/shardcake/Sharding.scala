@@ -170,7 +170,7 @@ class Sharding private (
       for {
         replyChannel <- ReplyChannel.stream[Any]
         _            <- sendToLocalEntity(msg, replyChannel)
-      } yield replyChannel.output.mapZIO(serialization.encode)
+      } yield replyChannel.output.mapChunksZIO(serialization.encodeChunk)
     }
 
   private def sendToLocalEntity(msg: BinaryMessage, replyChannel: ReplyChannel[Nothing]): Task[Unit] =
@@ -248,7 +248,10 @@ class Sharding private (
               }
             case _: ReplyChannel.FromQueue[_]   =>
               replyChannel.replyStream(
-                pods.sendMessageStreaming(pod, binaryMessage).tapError(errorHandling).mapZIO(serialization.decode[Res])
+                pods
+                  .sendMessageStreaming(pod, binaryMessage)
+                  .tapError(errorHandling)
+                  .mapChunksZIO(serialization.decodeChunk[Res])
               )
           }
         }
