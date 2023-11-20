@@ -2,15 +2,15 @@ val scala213 = "2.13.11"
 val scala3   = "3.3.0"
 val allScala = Seq(scala213, scala3)
 
-val zioVersion            = "2.0.18"
+val zioVersion            = "2.0.19"
 val zioGrpcVersion        = "0.6.0"
-val zioK8sVersion         = "2.0.2"
-val zioCacheVersion       = "0.2.1"
-val zioCatsInteropVersion = "23.0.0.0"
-val sttpVersion           = "3.8.15"
-val calibanVersion        = "2.4.0"
-val redis4catsVersion     = "1.2.0"
-val scalaKryoVersion      = "1.0.0"
+val zioK8sVersion         = "2.1.0"
+val zioCacheVersion       = "0.2.3"
+val zioCatsInteropVersion = "23.1.0.0"
+val sttpVersion           = "3.9.1"
+val calibanVersion        = "2.4.3"
+val redis4catsVersion     = "1.5.2"
+val scalaKryoVersion      = "1.0.2"
 val testContainersVersion = "0.40.9"
 
 inThisBuild(
