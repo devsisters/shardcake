@@ -139,20 +139,24 @@ class Sharding private (
          ))
   }
 
-  private[shardcake] val refreshAssignments: ZIO[Scope, Nothing, Unit] = {
-    val assignmentStream =
-      ZStream.fromZIO(
-        shardManager.getAssignments.map(_ -> true) // first, get the assignments from the shard manager directly
-      ) ++
-        storage.assignmentsStream.map(_ -> false) // then, get assignments changes from Redis
-    assignmentStream.mapZIO { case (assignmentsOpt, fromShardManager) =>
-      updateAssignments(assignmentsOpt, fromShardManager)
-    }.runDrain
-  }.retry(Schedule.fixed(config.refreshAssignmentsRetryInterval))
-    .interruptible
-    .forkDaemon
-    .withFinalizer(_.interrupt)
-    .unit
+  private[shardcake] val refreshAssignments: ZIO[Scope, Nothing, Unit] =
+    for {
+      latch           <- Promise.make[Nothing, Unit]
+      assignmentStream = ZStream.fromZIO(
+                           // first, get the assignments from the shard manager directly
+                           shardManager.getAssignments.map(_ -> true)
+                         ) ++
+                           // then, get assignments changes from Redis
+                           storage.assignmentsStream.map(_ -> false)
+      _               <- assignmentStream.mapZIO { case (assignmentsOpt, fromShardManager) =>
+                           updateAssignments(assignmentsOpt, fromShardManager) *> latch.succeed(()).when(fromShardManager)
+                         }.runDrain
+                           .retry(Schedule.fixed(config.refreshAssignmentsRetryInterval))
+                           .interruptible
+                           .forkDaemon
+                           .withFinalizer(_.interrupt)
+      _               <- latch.await
+    } yield ()
 
   private[shardcake] def isShuttingDown: UIO[Boolean] =
     isShuttingDownRef.get
