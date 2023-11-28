@@ -91,11 +91,9 @@ class GrpcPods(
             if (ex.getStatus.getCode == Status.Code.RESOURCE_EXHAUSTED) {
               // entity is not managed by this pod, wait and retry (assignments will be updated)
               EntityNotManagedByThisPod(message.entityId)
-            } else if (
-              ex.getStatus.getCode == Status.Code.UNAVAILABLE || ex.getStatus.getCode == Status.Code.CANCELLED
-            ) {
-              PodUnavailable(pod)
-            } else {
+            } else if (ex.getStatus.getCode == Status.Code.UNAVAILABLE) PodUnavailable(pod)
+            else if (ex.getStatus.getCode == Status.Code.CANCELLED) StreamCancelled
+            else {
               ex
             },
           _.body.toByteArray

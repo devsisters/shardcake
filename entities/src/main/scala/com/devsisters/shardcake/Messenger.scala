@@ -1,6 +1,6 @@
 package com.devsisters.shardcake
 
-import com.devsisters.shardcake.errors.PodUnavailable
+import com.devsisters.shardcake.errors.StreamCancelled
 import zio._
 import zio.stream.ZStream
 
@@ -49,10 +49,10 @@ trait Messenger[-Msg] {
         case (c, Left(err))  => (c, Left(c -> err))
       }
       .flatMap {
-        case Right(res)                                => ZStream.succeed(res)
-        case Left((lastSeenCursor, PodUnavailable(_))) =>
+        case Right(res)                              => ZStream.succeed(res)
+        case Left((lastSeenCursor, StreamCancelled)) =>
           ZStream.execute(ZIO.sleep(200.millis)) ++
             sendStreamAutoRestart(entityId, lastSeenCursor)(msg)(updateCursor)
-        case Left((_, err))                            => ZStream.fail(err)
+        case Left((_, err))                          => ZStream.fail(err)
       }
 }
