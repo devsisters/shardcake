@@ -13,6 +13,7 @@ private[shardcake] trait EntityManager[-Req] {
     replyId: Option[String],
     replyChannel: ReplyChannel[Nothing]
   ): IO[EntityNotManagedByThisPod, Unit]
+  def terminateEntity(entityId: String): UIO[Unit]
   def terminateEntitiesOnShards(shards: Set[ShardId]): UIO[Unit]
   def terminateAllEntities: UIO[Unit]
 }
@@ -46,7 +47,7 @@ private[shardcake] object EntityManager {
   private val currentTimeInMilliseconds: UIO[EpochMillis] =
     Clock.currentTime(TimeUnit.MILLISECONDS)
 
-  class EntityManagerLive[Req](
+  private class EntityManagerLive[Req](
     recipientType: RecipientType[Req],
     behavior: (String, Queue[Req]) => Task[Nothing],
     terminateMessage: Signal => Option[Req],
@@ -75,7 +76,7 @@ private[shardcake] object EntityManager {
       } yield ()).interruptible.forkDaemon
     }
 
-    private def terminateEntity(entityId: String): UIO[Unit] =
+    def terminateEntity(entityId: String): UIO[Unit] =
       entities.updateZIO(map =>
         map.get(entityId) match {
           case Some(Left(queue)) =>

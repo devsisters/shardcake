@@ -399,6 +399,12 @@ class Sharding private (
                            .catchAllCause(replyChannel.fail)
       _             <- entityStates.update(_.updated(recipientType.name, EntityState(entityManager, processBinary)))
     } yield ()
+
+  def terminateLocalEntity(entityType: EntityType[_], entityId: String): UIO[Unit] =
+    entityStates.get.flatMap(_.get(entityType.name) match {
+      case Some(state) => state.entityManager.terminateEntity(entityId)
+      case None        => ZIO.unit
+    })
 }
 
 object Sharding {
@@ -547,4 +553,13 @@ object Sharding {
    */
   def getPods: RIO[Sharding, Set[PodAddress]] =
     ZIO.serviceWithZIO[Sharding](_.getPods)
+
+  /**
+   * Terminate a given entity. If a termination message was provided, that message will be sent to the entity and
+   * no new message will be enqueued after that. If no termination message was provided, the entity will be stopped immediately.
+   * This method can only be used if the entity is hosted on the current pod (otherwise it will do nothing).
+   * Typically, you would use this method from inside the entity behavior to stop itself.
+   */
+  def terminateLocalEntity(entityType: EntityType[_], entityId: String): URIO[Sharding, Unit] =
+    ZIO.serviceWithZIO[Sharding](_.terminateLocalEntity(entityType, entityId))
 }

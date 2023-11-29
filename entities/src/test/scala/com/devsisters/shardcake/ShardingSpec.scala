@@ -25,7 +25,7 @@ object ShardingSpec extends ZIOSpecDefault {
             _       <- Clock.sleep(1 second)
             c1      <- counter.send("c1")(GetCounter.apply)
             c2      <- counter.send("c2")(GetCounter.apply)
-          } yield assertTrue(c1 == 2) && assertTrue(c2 == 1)
+          } yield assertTrue(c1 == 2, c2 == 1)
         }
       },
       test("Streaming") {
@@ -34,7 +34,7 @@ object ShardingSpec extends ZIOSpecDefault {
             _       <- Sharding.registerEntity(Counter, behavior)
             _       <- Sharding.registerScoped
             counter <- Sharding.messenger(Counter)
-            stream  <- counter.sendStream("c1")(StreamingChanges(_))
+            stream  <- counter.sendStream("c1")(StreamingChanges.apply)
             latch   <- Promise.make[Nothing, Unit]
             fiber   <- stream.take(5).tap(_ => latch.succeed(())).runCollect.fork
             _       <- latch.await
@@ -52,7 +52,7 @@ object ShardingSpec extends ZIOSpecDefault {
             _       <- Sharding.registerEntity(Counter, behavior)
             _       <- Sharding.registerScoped
             counter <- Sharding.messenger(Counter)
-            stream  <- counter.sendStream("c1")(StreamingChanges(_))
+            stream  <- counter.sendStream("c1")(StreamingChanges.apply)
             latch   <- Promise.make[Nothing, Unit]
             fiber   <- stream.take(2).tap(_ => latch.succeed(())).runCollect.fork
             _       <- latch.await
@@ -71,6 +71,19 @@ object ShardingSpec extends ZIOSpecDefault {
             _       <- counter.sendDiscard("c3")(IncrementCounter)
             c0      <- counter.send("c3")(GetCounter.apply)
             _       <- Clock.sleep(3 seconds)
+            c1 <- counter.send("c3")(GetCounter.apply) // counter should be restarted
+          } yield assertTrue(c0 == 1, c1 == 0)
+        }
+      },
+      test("Entity manual termination") {
+        ZIO.scoped {
+          for {
+            _       <- Sharding.registerEntity(Counter, behavior)
+            _       <- Sharding.registerScoped
+            counter <- Sharding.messenger(Counter)
+            _       <- counter.sendDiscard("c3")(IncrementCounter)
+            c0      <- counter.send("c3")(GetCounter.apply)
+            _       <- counter.send("c3")(TriggerTerminate.apply)
             c1 <- counter.send("c3")(GetCounter.apply) // counter should be restarted
           } yield assertTrue(c0 == 1, c1 == 0)
         }
@@ -119,6 +132,7 @@ object CounterActor {
     case object IncrementCounter                             extends CounterMessage
     case object DecrementCounter                             extends CounterMessage
     case class StreamingChanges(replier: StreamReplier[Int]) extends CounterMessage
+    case class TriggerTerminate(replier: Replier[Unit])      extends CounterMessage
   }
 
   object Counter extends EntityType[CounterMessage]("counter")
@@ -134,6 +148,8 @@ object CounterActor {
             case CounterMessage.DecrementCounter          => state.update(_ - 1)
             case CounterMessage.StreamingChanges(replier) =>
               replier.replyStream(state.changes.ensuring(state.set(-1)))
+            case CounterMessage.TriggerTerminate(replier) =>
+              Sharding.terminateLocalEntity(Counter, entityId).ensuring(replier.reply(()))
           }.forever
         )
 }
