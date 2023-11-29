@@ -20,7 +20,7 @@ private[shardcake] object ReplyChannel {
     def replyStream(stream: ZStream[Any, Throwable, A]): UIO[Unit] =
       (stream
         .runForeachChunk(chunk => queue.offer(Take.chunk(chunk)))
-        .foldCause(cause => queue.offer(Take.failCause(cause)), _ => queue.offer(Take.end)) race await).fork.unit
+        .foldCauseZIO(cause => queue.offer(Take.failCause(cause)), _ => queue.offer(Take.end)) race await).fork.unit
     val output: ZStream[Any, Throwable, A]                         = ZStream.fromQueueWithShutdown(queue).flattenTake.onError(fail)
   }
 
