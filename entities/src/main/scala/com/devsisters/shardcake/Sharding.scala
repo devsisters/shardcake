@@ -47,9 +47,9 @@ class Sharding private (
           isShuttingDownRef.set(true) *>
           entityStates.get.flatMap(
             ZIO.foreachDiscard(_) { case (name, entity) =>
-              entity.entityManager.terminateAllEntities.catchAllCause(
-                ZIO.logErrorCause(s"Error during stop of entity $name", _)
-              )
+              entity.entityManager.terminateAllEntities.forkDaemon // run in a daemon fiber to make sure it doesn't get interrupted
+                .flatMap(_.join)
+                .catchAllCause(ZIO.logErrorCause(s"Error during stop of entity $name", _))
             }
           ) *>
           ZIO.logDebug(s"Unregistering pod $address to Shard Manager") *>
