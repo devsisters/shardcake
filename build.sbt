@@ -10,6 +10,7 @@ val zioCatsInteropVersion = "23.1.0.0"
 val sttpVersion           = "3.9.1"
 val calibanVersion        = "2.4.3"
 val redis4catsVersion     = "1.5.2"
+val redissonVersion       = "3.23.0"
 val scalaKryoVersion      = "1.0.2"
 val testContainersVersion = "0.40.9"
 
@@ -53,6 +54,7 @@ lazy val root = project
     entities,
     healthK8s,
     storageRedis,
+    storageRedisson,
     serializationKryo,
     grpcProtocol,
     examples
@@ -123,6 +125,18 @@ lazy val storageRedis = project
         "dev.profunktor" %% "redis4cats-effects" % redis4catsVersion,
         "dev.profunktor" %% "redis4cats-streams" % redis4catsVersion,
         "dev.zio"        %% "zio-interop-cats"   % zioCatsInteropVersion
+      )
+  )
+
+lazy val storageRedisson = project
+  .in(file("storage-redisson"))
+  .settings(name := "shardcake-storage-redisson")
+  .settings(commonSettings)
+  .dependsOn(core)
+  .settings(
+    libraryDependencies ++=
+      Seq(
+        "org.redisson" % "redisson" % redissonVersion
       )
   )
 

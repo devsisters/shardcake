@@ -26,7 +26,7 @@ trait Storage {
 
 For testing, you can use the `Storage.memory` layer that keeps data in memory.
 
-Shardcake provides an implementation of `Storage` using Redis. To use it, add the following dependency:
+Shardcake provides an implementation of `Storage` using Redis with the Redis4cats library (there's also an alternative using Redisson). To use it, add the following dependency:
 ```scala
 libraryDependencies += "com.devsisters" %% "shardcake-storage-redis" % "2.1.0"
 ```
