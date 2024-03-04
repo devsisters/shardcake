@@ -60,7 +60,7 @@ private[shardcake] object EntityManager {
     private def startExpirationFiber(entityId: String): UIO[Fiber[Nothing, Unit]] = {
       val maxIdleTime = entityMaxIdleTime getOrElse config.entityMaxIdleTime
 
-      def sleep(duration: Duration): UIO[Any] =
+      def sleep(duration: Duration): UIO[Unit] =
         (Clock.sleep(duration) *> currentTimeInMilliseconds <*> entitiesLastReceivedAt.get).flatMap { case (cdt, map) =>
           val lastReceivedAt = map.getOrElse(entityId, 0L)
           val remaining      = maxIdleTime minus Duration.fromMillis(cdt - lastReceivedAt)
