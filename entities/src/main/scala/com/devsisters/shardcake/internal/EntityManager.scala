@@ -60,15 +60,13 @@ private[shardcake] object EntityManager {
     private def startExpirationFiber(entityId: String): UIO[Fiber[Nothing, Unit]] = {
       val maxIdleTime = entityMaxIdleTime getOrElse config.entityMaxIdleTime
 
-      def sleep(duration: Duration): UIO[Unit] =
-        for {
-          _             <- Clock.sleep(duration)
-          cdt           <- currentTimeInMilliseconds
-          map           <- entitiesLastReceivedAt.get
-          lastReceivedAt = map.getOrElse(entityId, 0L)
-          remaining      = maxIdleTime minus Duration.fromMillis(cdt - lastReceivedAt)
-          _             <- sleep(remaining).when(remaining > Duration.Zero)
-        } yield ()
+      def sleep(duration: Duration): UIO[Any] =
+        (Clock.sleep(duration) *> currentTimeInMilliseconds <*> entitiesLastReceivedAt.get).flatMap { case (cdt, map) =>
+          val lastReceivedAt = map.getOrElse(entityId, 0L)
+          val remaining      = maxIdleTime minus Duration.fromMillis(cdt - lastReceivedAt)
+          // do not use ZIO.when to prevent zio stack memory leak
+          if (remaining > Duration.Zero) sleep(remaining) else ZIO.unit
+        }
 
       (for {
         _ <- sleep(maxIdleTime)
