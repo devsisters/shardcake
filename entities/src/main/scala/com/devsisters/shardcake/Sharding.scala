@@ -1,5 +1,6 @@
 package com.devsisters.shardcake
 
+import com.devsisters.shardcake.Messenger.MessengerTimeout
 import com.devsisters.shardcake.Sharding.{ EntityState, ShardingRegistrationEvent }
 import com.devsisters.shardcake.errors.{ EntityNotManagedByThisPod, PodUnavailable, SendTimeoutException }
 import com.devsisters.shardcake.interfaces.Pods.BinaryMessage
@@ -261,22 +262,30 @@ class Sharding private (
         }
     }
 
-  def messenger[Msg](entityType: EntityType[Msg], sendTimeout: Option[Duration] = None): Messenger[Msg] =
+  def messenger[Msg](
+    entityType: EntityType[Msg],
+    sendTimeout: MessengerTimeout = MessengerTimeout.InheritConfigTimeout
+  ): Messenger[Msg] =
     new Messenger[Msg] {
-      val timeout: Duration = sendTimeout.getOrElse(config.sendTimeout)
+      private val timeout = sendTimeout match {
+        case MessengerTimeout.NoTimeout            => None
+        case MessengerTimeout.InheritConfigTimeout => Some(config.sendTimeout)
+        case MessengerTimeout.Timeout(duration)    => Some(duration)
+      }
 
-      def sendDiscard(entityId: String)(msg: Msg): Task[Unit] =
-        sendMessage(entityId, msg, None).timeout(timeout).unit
+      def sendDiscard(entityId: String)(msg: Msg): Task[Unit] = {
+        val send = sendMessage(entityId, msg, None)
+        timeout.fold(send.unit)(t => send.timeout(t).unit)
+      }
 
       def send[Res](entityId: String)(msg: Replier[Res] => Msg): Task[Res] =
         Random.nextUUID.flatMap { uuid =>
           val body = msg(Replier(uuid.toString))
-          sendMessage[Res](entityId, body, Some(uuid.toString)).flatMap {
+          val send = sendMessage[Res](entityId, body, Some(uuid.toString)).flatMap {
             case Some(value) => ZIO.succeed(value)
             case None        => ZIO.fail(new Exception(s"Send returned nothing, entityId=$entityId, body=$body"))
           }
-            .timeoutFail(SendTimeoutException(entityType, entityId, body))(timeout)
-            .interruptible
+          timeout.fold(send)(t => send.timeoutFail(SendTimeoutException(entityType, entityId, body))(t).interruptible)
         }
 
       def sendStream[Res](entityId: String)(msg: StreamReplier[Res] => Msg): Task[ZStream[Any, Throwable, Res]] =
@@ -328,12 +337,21 @@ class Sharding private (
       }
     }
 
-  def broadcaster[Msg](topicType: TopicType[Msg], sendTimeout: Option[Duration] = None): Broadcaster[Msg] =
+  def broadcaster[Msg](
+    topicType: TopicType[Msg],
+    sendTimeout: MessengerTimeout = MessengerTimeout.InheritConfigTimeout
+  ): Broadcaster[Msg] =
     new Broadcaster[Msg] {
-      val timeout: Duration = sendTimeout.getOrElse(config.sendTimeout)
+      private val timeout = sendTimeout match {
+        case MessengerTimeout.NoTimeout            => None
+        case MessengerTimeout.InheritConfigTimeout => Some(config.sendTimeout)
+        case MessengerTimeout.Timeout(duration)    => Some(duration)
+      }
 
-      def broadcastDiscard(topic: String)(msg: Msg): UIO[Unit] =
-        sendMessage(topic, msg, None).timeout(timeout).unit
+      def broadcastDiscard(topic: String)(msg: Msg): UIO[Unit] = {
+        val send = sendMessage(topic, msg, None)
+        timeout.fold(send.unit)(t => send.timeout(t).unit)
+      }
 
       def broadcast[Res](topic: String)(msg: Replier[Res] => Msg): UIO[Map[PodAddress, Try[Res]]] =
         Random.nextUUID.flatMap { uuid =>
@@ -355,11 +373,12 @@ class Sharding private (
                           res          <- replyChannel.output
                         } yield res
 
-                      trySend.flatMap {
+                      val send = trySend.flatMap {
                         case Some(value) => ZIO.succeed(value)
                         case None        => ZIO.fail(new Exception(s"Send returned nothing, topic=$topic"))
                       }
-                        .timeoutFail(new Exception(s"Send timed out, topic=$topic"))(timeout)
+                      timeout
+                        .fold(send)(t => send.timeoutFail(new Exception(s"Send timed out, topic=$topic"))(t))
                         .either
                         .map(pod -> _.toTry)
                     }
@@ -534,7 +553,7 @@ object Sharding {
    */
   def messenger[Msg](
     entityType: EntityType[Msg],
-    sendTimeout: Option[Duration] = None
+    sendTimeout: MessengerTimeout = MessengerTimeout.InheritConfigTimeout
   ): URIO[Sharding, Messenger[Msg]] =
     ZIO.serviceWith[Sharding](_.messenger(entityType, sendTimeout))
 
@@ -544,7 +563,7 @@ object Sharding {
    */
   def broadcaster[Msg](
     topicType: TopicType[Msg],
-    sendTimeout: Option[Duration] = None
+    sendTimeout: MessengerTimeout = MessengerTimeout.InheritConfigTimeout
   ): URIO[Sharding, Broadcaster[Msg]] =
     ZIO.serviceWith[Sharding](_.broadcaster(topicType, sendTimeout))
 

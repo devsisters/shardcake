@@ -56,3 +56,12 @@ trait Messenger[-Msg] {
         case Left((_, err))                          => ZStream.fail(err)
       }
 }
+
+object Messenger {
+  sealed trait MessengerTimeout
+  object MessengerTimeout {
+    case object NoTimeout                  extends MessengerTimeout
+    case object InheritConfigTimeout       extends MessengerTimeout
+    case class Timeout(duration: Duration) extends MessengerTimeout
+  }
+}
