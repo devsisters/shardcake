@@ -53,14 +53,22 @@ object GrpcShardingService {
   /**
    * A layer that creates a gRPC server that exposes the Pods API.
    */
-  val live: ZLayer[Config with Sharding, Throwable, Unit] =
-    ZLayer.scoped[Config with Sharding] {
+  val live: ZLayer[Config with Sharding with GrpcConfig, Throwable, Unit] =
+    ZLayer.scoped[Config with Sharding with GrpcConfig] {
       for {
-        config   <- ZIO.service[Config]
-        sharding <- ZIO.service[Sharding]
-        builder   = ServerBuilder.forPort(config.shardingPort).addService(ProtoReflectionService.newInstance())
-        services  = ServiceList.add(new GrpcShardingService(sharding, config.sendTimeout) {})
-        _        <- ScopedServer.fromServiceList(builder, services)
+        config     <- ZIO.service[Config]
+        grpcConfig <- ZIO.service[GrpcConfig]
+        sharding   <- ZIO.service[Sharding]
+        builder     = grpcConfig.executor match {
+                        case Some(executor) =>
+                          ServerBuilder
+                            .forPort(config.shardingPort)
+                            .executor(executor)
+                        case None           =>
+                          ServerBuilder.forPort(config.shardingPort)
+                      }
+        services    = ServiceList.add(new GrpcShardingService(sharding, config.sendTimeout) {})
+        _          <- ScopedServer.fromServiceList(builder.addService(ProtoReflectionService.newInstance()), services)
       } yield ()
     }
 }
