@@ -348,10 +348,8 @@ class Sharding private (
         case MessengerTimeout.Timeout(duration)    => Some(duration)
       }
 
-      def broadcastDiscard(topic: String)(msg: Msg): UIO[Unit] = {
-        val send = sendMessage(topic, msg, None)
-        timeout.fold(send.unit)(t => send.timeout(t).unit)
-      }
+      def broadcastDiscard(topic: String)(msg: Msg): UIO[Unit] =
+        sendMessage(topic, msg, None).unit
 
       def broadcast[Res](topic: String)(msg: Replier[Res] => Msg): UIO[Map[PodAddress, Try[Res]]] =
         Random.nextUUID.flatMap { uuid =>
@@ -375,7 +373,9 @@ class Sharding private (
 
                       val send = trySend.flatMap {
                         case Some(value) => ZIO.succeed(value)
-                        case None        => ZIO.fail(new Exception(s"Send returned nothing, topic=$topic"))
+                        case None        =>
+                          if (replyId.isDefined) ZIO.fail(new Exception(s"Send returned nothing, topic=$topic"))
+                          else ZIO.succeed(null.asInstanceOf[Res])
                       }
                       timeout
                         .fold(send)(t => send.timeoutFail(new Exception(s"Send timed out, topic=$topic"))(t))
