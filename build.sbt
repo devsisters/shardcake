@@ -3,7 +3,8 @@ val scala3   = "3.3.0"
 val allScala = Seq(scala213, scala3)
 
 val zioVersion            = "2.0.21"
-val zioGrpcVersion        = "0.6.0"
+val zioGrpcVersion        = "0.6.1"
+val grpcVersion           = "1.60.2"
 val zioK8sVersion         = "2.1.1"
 val zioCacheVersion       = "0.2.3"
 val zioCatsInteropVersion = "23.1.0.0"
@@ -170,8 +171,8 @@ lazy val grpcProtocol = project
       "com.thesamet.scalapb"          %% "scalapb-runtime"      % scalapb.compiler.Version.scalapbVersion % "protobuf",
       "com.thesamet.scalapb"          %% "scalapb-runtime-grpc" % scalapb.compiler.Version.scalapbVersion,
       "com.thesamet.scalapb.zio-grpc" %% "zio-grpc-core"        % zioGrpcVersion,
-      "io.grpc"                        % "grpc-netty"           % scalapb.compiler.Version.grpcJavaVersion,
-      "io.grpc"                        % "grpc-services"        % scalapb.compiler.Version.grpcJavaVersion
+      "io.grpc"                        % "grpc-netty"           % grpcVersion,
+      "io.grpc"                        % "grpc-services"        % grpcVersion
     )
   )
 
