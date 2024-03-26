@@ -67,7 +67,9 @@ class Sharding private (
         singletons.updateZIO { singletons =>
           ZIO.foreach(singletons) {
             case (name, run, None) =>
-              ZIO.logDebug(s"Starting singleton $name") *> run.forkDaemon.map(fiber => (name, run, Some(fiber)))
+              ZIO.logDebug(s"Starting singleton $name") *>
+                Metrics.singletons.tagged("name", name).increment *>
+                run.forkDaemon.map(fiber => (name, run, Some(fiber)))
             case other             => ZIO.succeed(other)
           }
         }
@@ -80,7 +82,9 @@ class Sharding private (
         singletons.updateZIO { singletons =>
           ZIO.foreach(singletons) {
             case (name, run, Some(fiber)) =>
-              ZIO.logDebug(s"Stopping singleton $name") *> fiber.interrupt.as((name, run, None))
+              ZIO.logDebug(s"Stopping singleton $name") *>
+                Metrics.singletons.tagged("name", name).decrement *>
+                fiber.interrupt.as((name, run, None))
             case other                    => ZIO.succeed(other)
           }
         }
@@ -96,7 +100,8 @@ class Sharding private (
     ZIO
       .unlessZIO(isShuttingDown) {
         shardAssignments.update(shards.foldLeft(_) { case (map, shard) => map.updated(shard, address) }) *>
-          startSingletonsIfNeeded <*
+          Metrics.shards.incrementBy(shards.size) *>
+          startSingletonsIfNeeded *>
           ZIO.logDebug(s"Assigned shards: $shards")
       }
       .unit
@@ -111,7 +116,8 @@ class Sharding private (
           _.entityManager.terminateEntitiesOnShards(shards) // this will return once all shards are terminated
         )
       ) *>
-      stopSingletonsIfNeeded <*
+      Metrics.shards.decrementBy(shards.size) *>
+      stopSingletonsIfNeeded *>
       ZIO.logDebug(s"Unassigned shards: $shards")
 
   private[shardcake] def isEntityOnLocalShards(recipientType: RecipientType[_], entityId: String): UIO[Boolean] =
@@ -130,6 +136,9 @@ class Sharding private (
   ): UIO[Unit] = {
     val assignments = assignmentsOpt.flatMap { case (k, v) => v.map(k -> _) }
     ZIO.logDebug("Received new shard assignments") *>
+      Metrics.shards
+        .set(assignmentsOpt.count { case (_, podOpt) => podOpt.contains(address) })
+        .when(fromShardManager) *>
       (if (fromShardManager) shardAssignments.update(map => if (map.isEmpty) assignments else map)
        else
          shardAssignments.update(map =>

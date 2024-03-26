@@ -37,6 +37,7 @@ class ShardManager(
                    .succeed(OffsetDateTime.now())
                    .map(cdt => state.copy(pods = state.pods.updated(pod.address, PodWithMetadata(pod, cdt))))
                )
+      _     <- ManagerMetrics.pods.increment
       _     <- eventsHub.publish(ShardingEvent.PodRegistered(pod.address))
       _     <- ZIO.when(state.unassignedShards.nonEmpty)(rebalance(false))
       _     <- persistPods.forkDaemon
@@ -45,7 +46,8 @@ class ShardManager(
   def notifyUnhealthyPod(podAddress: PodAddress): UIO[Unit] =
     ZIO
       .whenZIO(stateRef.get.map(_.pods.contains(podAddress))) {
-        eventsHub.publish(ShardingEvent.PodHealthChecked(podAddress)) *>
+        ManagerMetrics.podHealthChecked.tagged("pod_address", podAddress.toString).increment *>
+          eventsHub.publish(ShardingEvent.PodHealthChecked(podAddress)) *>
           ZIO.unlessZIO(healthApi.isAlive(podAddress))(
             ZIO.logWarning(s"$podAddress is not alive, unregistering") *> unregister(podAddress)
           )
@@ -73,6 +75,7 @@ class ShardManager(
                                )
                              )
                            }
+          _             <- ManagerMetrics.pods.decrement
           _             <- eventsHub.publish(ShardingEvent.PodUnregistered(podAddress))
           _             <- eventsHub
                              .publish(ShardingEvent.ShardsUnassigned(podAddress, unassignments))
@@ -92,7 +95,8 @@ class ShardManager(
                                                            decideAssignmentsForUnassignedShards(state)
                                                          else decideAssignmentsForUnbalancedShards(state, config.rebalanceRate)
         areChanges                                     = assignments.nonEmpty || unassignments.nonEmpty
-        _                                             <- ZIO.logDebug(s"Rebalancing (rebalanceImmediately=$rebalanceImmediately)").when(areChanges)
+        _                                             <- (ZIO.logDebug(s"Rebalancing (rebalanceImmediately=$rebalanceImmediately)") *>
+                                                           ManagerMetrics.rebalances.increment).when(areChanges)
         // ping pods first to make sure they are ready and remove those who aren't
         failedPingedPods                              <- ZIO
                                                            .foreachPar(assignments.keySet ++ unassignments.keySet)(pod =>
@@ -114,9 +118,11 @@ class ShardManager(
                                                              (podApi.unassignShards(pod, shards) *> updateShardsState(shards, None)).foldZIO(
                                                                _ => ZIO.succeed((Set(pod), shards)),
                                                                _ =>
-                                                                 eventsHub
-                                                                   .publish(ShardingEvent.ShardsUnassigned(pod, shards))
-                                                                   .as((Set.empty, Set.empty))
+                                                                 ManagerMetrics.assignedShards.tagged("pod_address", pod.toString).decrementBy(shards.size) *>
+                                                                   ManagerMetrics.unassignedShards.incrementBy(shards.size) *>
+                                                                   eventsHub
+                                                                     .publish(ShardingEvent.ShardsUnassigned(pod, shards))
+                                                                     .as((Set.empty, Set.empty))
                                                              )
                                                            }
                                                            .map(_.unzip)
@@ -131,7 +137,12 @@ class ShardManager(
                                                            .foreachPar(filteredAssignments.toList) { case (pod, shards) =>
                                                              (podApi.assignShards(pod, shards) *> updateShardsState(shards, Some(pod))).foldZIO(
                                                                _ => ZIO.succeed(Set(pod)),
-                                                               _ => eventsHub.publish(ShardingEvent.ShardsAssigned(pod, shards)).as(Set.empty)
+                                                               _ =>
+                                                                 ManagerMetrics.assignedShards
+                                                                   .tagged("pod_address", pod.toString)
+                                                                   .incrementBy(shards.size) *>
+                                                                   ManagerMetrics.unassignedShards.decrementBy(shards.size) *>
+                                                                   eventsHub.publish(ShardingEvent.ShardsAssigned(pod, shards)).as(Set.empty)
                                                              )
                                                            }
                                                            .map(_.flatten.toSet)
@@ -201,6 +212,15 @@ object ShardManager {
                                 filteredPods.map { case (k, v) => k -> PodWithMetadata(v, cdt) },
                                 (1 to config.numberOfShards).map(_ -> None).toMap ++ filteredAssignments
                               )
+        _                  <- ManagerMetrics.pods.incrementBy(initialState.pods.size)
+        _                  <- ZIO.foreachDiscard(initialState.shards) { case (_, podAddressOpt) =>
+                                podAddressOpt match {
+                                  case Some(podAddress) =>
+                                    ManagerMetrics.assignedShards.tagged("pod_address", podAddress.toString).increment
+                                  case None             =>
+                                    ManagerMetrics.unassignedShards.increment
+                                }
+                              }
         state              <- Ref.Synchronized.make(initialState)
         rebalanceSemaphore <- Semaphore.make(1)
         eventsHub          <- Hub.unbounded[ShardingEvent]
