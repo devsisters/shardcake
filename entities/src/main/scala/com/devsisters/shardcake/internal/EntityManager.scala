@@ -2,6 +2,8 @@ package com.devsisters.shardcake.internal
 
 import com.devsisters.shardcake.errors.EntityNotManagedByThisPod
 import com.devsisters.shardcake._
+import zio.metrics.{ Metric, MetricState }
+import zio.metrics.MetricKeyType.Gauge
 import zio.{ Config => _, _ }
 
 import java.util.concurrent.TimeUnit
@@ -57,6 +59,8 @@ private[shardcake] object EntityManager {
     config: Config,
     entityMaxIdleTime: Option[Duration]
   ) extends EntityManager[Req] {
+    private val gauge = Metrics.entities.tagged("type", recipientType.name)
+
     private def startExpirationFiber(entityId: String): UIO[Fiber[Nothing, Unit]] = {
       val maxIdleTime = entityMaxIdleTime getOrElse config.entityMaxIdleTime
 
@@ -150,10 +154,12 @@ private[shardcake] object EntityManager {
                   queue           <- Queue.unbounded[Req]
                   // start the expiration fiber
                   expirationFiber <- startExpirationFiber(entityId)
+                  _               <- gauge.increment
                   _               <- behavior(entityId, queue)
                                        .ensuring(
                                          // shutdown the queue when the fiber ends
                                          entities.update(_ - entityId) *>
+                                           gauge.decrement *>
                                            entitiesLastReceivedAt.update(_ - entityId) *>
                                            queue.shutdown *>
                                            expirationFiber.interrupt
