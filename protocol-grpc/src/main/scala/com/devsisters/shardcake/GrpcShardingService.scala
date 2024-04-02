@@ -61,16 +61,19 @@ object GrpcShardingService {
         config        <- ZIO.service[Config]
         grpcConfig    <- ZIO.service[GrpcConfig]
         sharding      <- ZIO.service[Sharding]
-        builder        = (grpcConfig.executor match {
+        builder        = grpcConfig.executor match {
                            case Some(executor) =>
                              ServerBuilder
                                .forPort(config.shardingPort)
                                .executor(executor)
                            case None           =>
                              ServerBuilder.forPort(config.shardingPort)
-                         }).addService(ProtoReflectionService.newInstance())
+                         }
         services      <- ServiceList.add(new GrpcShardingService(sharding, config.sendTimeout) {}).bindAll
-        server: Server = services.foldLeft(builder) { case (builder0, service) => builder0.addService(service) }.build()
+        server: Server = services
+                           .foldLeft(builder) { case (builder0, service) => builder0.addService(service) }
+                           .addService(ProtoReflectionService.newInstance())
+                           .build()
         _             <- ZIO.acquireRelease(ZIO.attempt(server.start()))(server =>
                            ZIO.attemptBlocking {
                              server.shutdown()
