@@ -5,11 +5,12 @@ import com.devsisters.shardcake.interfaces.Pods.BinaryMessage
 import com.devsisters.shardcake.protobuf.sharding.ZioSharding.ShardingService
 import com.devsisters.shardcake.protobuf.sharding._
 import com.google.protobuf.ByteString
-import io.grpc.protobuf.services.ProtoReflectionService
-import io.grpc.{ ServerBuilder, Status, StatusException, StatusRuntimeException }
-import scalapb.zio_grpc.{ ScopedServer, ServiceList }
-import zio.{ Config => _, _ }
+import io.grpc._
+import scalapb.zio_grpc.ServiceList
 import zio.stream.ZStream
+import zio.{ Config => _, _ }
+
+import java.util.concurrent.TimeUnit
 
 abstract class GrpcShardingService(sharding: Sharding, timeout: Duration) extends ShardingService {
   def assignShards(request: AssignShardsRequest): ZIO[Any, StatusException, AssignShardsResponse] =
@@ -56,19 +57,26 @@ object GrpcShardingService {
   val live: ZLayer[Config with Sharding with GrpcConfig, Throwable, Unit] =
     ZLayer.scoped[Config with Sharding with GrpcConfig] {
       for {
-        config     <- ZIO.service[Config]
-        grpcConfig <- ZIO.service[GrpcConfig]
-        sharding   <- ZIO.service[Sharding]
-        builder     = grpcConfig.executor match {
-                        case Some(executor) =>
-                          ServerBuilder
-                            .forPort(config.shardingPort)
-                            .executor(executor)
-                        case None           =>
-                          ServerBuilder.forPort(config.shardingPort)
-                      }
-        services    = ServiceList.add(new GrpcShardingService(sharding, config.sendTimeout) {})
-        _          <- ScopedServer.fromServiceList(builder.addService(ProtoReflectionService.newInstance()), services)
+        config        <- ZIO.service[Config]
+        grpcConfig    <- ZIO.service[GrpcConfig]
+        sharding      <- ZIO.service[Sharding]
+        builder        = grpcConfig.executor match {
+                           case Some(executor) =>
+                             ServerBuilder
+                               .forPort(config.shardingPort)
+                               .executor(executor)
+                           case None           =>
+                             ServerBuilder.forPort(config.shardingPort)
+                         }
+        services      <- ServiceList.add(new GrpcShardingService(sharding, config.sendTimeout) {}).bindAll
+        server: Server = services.foldLeft(builder) { case (builder0, service) => builder0.addService(service) }.build()
+        _             <- ZIO.acquireRelease(ZIO.attempt(server.start()))(server =>
+                           ZIO.attemptBlocking {
+                             server.shutdown()
+                             server.awaitTermination(grpcConfig.shutdownTimeout.toMillis, TimeUnit.MILLISECONDS)
+                             server.shutdownNow()
+                           }.ignore
+                         )
       } yield ()
     }
 }

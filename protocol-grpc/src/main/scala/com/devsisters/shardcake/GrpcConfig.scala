@@ -1,5 +1,7 @@
 package com.devsisters.shardcake
 
+import zio._
+
 import java.util.concurrent.Executor
 
 /**
@@ -7,10 +9,11 @@ import java.util.concurrent.Executor
  *
  * @param maxInboundMessageSize the maximum message size allowed to be received by the grpc client
  * @param executor a custom executor to pass to grpc-java when creating gRPC clients and servers
+ * @param shutdownTimeout the timeout to wait for the gRPC server to shutdown before forcefully shutting it down
  */
-case class GrpcConfig(maxInboundMessageSize: Int, executor: Option[Executor])
+case class GrpcConfig(maxInboundMessageSize: Int, executor: Option[Executor], shutdownTimeout: Duration)
 
 object GrpcConfig {
   val default: GrpcConfig =
-    GrpcConfig(maxInboundMessageSize = 32 * 1024 * 1024, None)
+    GrpcConfig(maxInboundMessageSize = 32 * 1024 * 1024, None, 3.seconds)
 }
