@@ -6,6 +6,7 @@ import com.devsisters.shardcake.protobuf.sharding.ZioSharding.ShardingService
 import com.devsisters.shardcake.protobuf.sharding._
 import com.google.protobuf.ByteString
 import io.grpc._
+import io.grpc.protobuf.services.ProtoReflectionService
 import scalapb.zio_grpc.ServiceList
 import zio.stream.ZStream
 import zio.{ Config => _, _ }
@@ -60,14 +61,14 @@ object GrpcShardingService {
         config        <- ZIO.service[Config]
         grpcConfig    <- ZIO.service[GrpcConfig]
         sharding      <- ZIO.service[Sharding]
-        builder        = grpcConfig.executor match {
+        builder        = (grpcConfig.executor match {
                            case Some(executor) =>
                              ServerBuilder
                                .forPort(config.shardingPort)
                                .executor(executor)
                            case None           =>
                              ServerBuilder.forPort(config.shardingPort)
-                         }
+                         }).addService(ProtoReflectionService.newInstance())
         services      <- ServiceList.add(new GrpcShardingService(sharding, config.sendTimeout) {}).bindAll
         server: Server = services.foldLeft(builder) { case (builder0, service) => builder0.addService(service) }.build()
         _             <- ZIO.acquireRelease(ZIO.attempt(server.start()))(server =>
