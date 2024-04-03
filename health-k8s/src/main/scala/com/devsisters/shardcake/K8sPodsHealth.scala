@@ -14,7 +14,7 @@ import com.coralogix.zio.k8s.client.{
   Unauthorized,
   UndefinedField
 }
-import com.coralogix.zio.k8s.client.model.FieldSelector
+import com.coralogix.zio.k8s.client.model.{ FieldSelector, LabelSelector }
 import com.coralogix.zio.k8s.client.v1.pods.Pods
 import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.Status
 import com.devsisters.shardcake.interfaces.PodsHealth
@@ -42,7 +42,8 @@ object K8sPodsHealth {
                           .getAll(
                             config.namespace,
                             1,
-                            Some(FieldSelector.FieldEquals(Chunk("status", "podIP"), podAddress.host))
+                            Some(FieldSelector.FieldEquals(Chunk("status", "podIP"), podAddress.host)),
+                            config.labelSelector
                           )
                           .runHead
                           .map(_.isDefined)
