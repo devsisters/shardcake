@@ -33,9 +33,27 @@ trait Pods {
   def sendMessage(pod: PodAddress, message: BinaryMessage): Task[Option[Array[Byte]]]
 
   /**
+   * Send a stream of messages to a pod
+   */
+  def sendStream(
+    pod: PodAddress,
+    entityId: String,
+    messages: ZStream[Any, Throwable, BinaryMessage]
+  ): Task[Option[Array[Byte]]]
+
+  /**
    * Send a message to a pod and receive a stream of replies
    */
-  def sendMessageStreaming(pod: PodAddress, message: BinaryMessage): ZStream[Any, Throwable, Array[Byte]]
+  def sendMessageAndReceiveStream(pod: PodAddress, message: BinaryMessage): ZStream[Any, Throwable, Array[Byte]]
+
+  /**
+   * Send a stream of messages to a pod and receive a stream of replies
+   */
+  def sendStreamAndReceiveStream(
+    pod: PodAddress,
+    entityId: String,
+    messages: ZStream[Any, Throwable, BinaryMessage]
+  ): ZStream[Any, Throwable, Array[Byte]]
 }
 
 object Pods {
@@ -46,12 +64,22 @@ object Pods {
    */
   val noop: ULayer[Pods] =
     ZLayer.succeed(new Pods {
-      def assignShards(pod: PodAddress, shards: Set[ShardId]): Task[Unit]                                     = ZIO.unit
-      def unassignShards(pod: PodAddress, shards: Set[ShardId]): Task[Unit]                                   = ZIO.unit
-      def ping(pod: PodAddress): Task[Unit]                                                                   = ZIO.unit
-      def sendMessage(pod: PodAddress, message: BinaryMessage): Task[Option[Array[Byte]]]                     = ZIO.none
-      def sendMessageStreaming(pod: PodAddress, message: BinaryMessage): ZStream[Any, Throwable, Array[Byte]] =
+      def assignShards(pod: PodAddress, shards: Set[ShardId]): Task[Unit]                                            = ZIO.unit
+      def unassignShards(pod: PodAddress, shards: Set[ShardId]): Task[Unit]                                          = ZIO.unit
+      def ping(pod: PodAddress): Task[Unit]                                                                          = ZIO.unit
+      def sendMessage(pod: PodAddress, message: BinaryMessage): Task[Option[Array[Byte]]]                            = ZIO.none
+      def sendStream(
+        pod: PodAddress,
+        entityId: String,
+        messages: ZStream[Any, Throwable, BinaryMessage]
+      ): Task[Option[Array[Byte]]] = ZIO.none
+      def sendMessageAndReceiveStream(pod: PodAddress, message: BinaryMessage): ZStream[Any, Throwable, Array[Byte]] =
         ZStream.empty
+      def sendStreamAndReceiveStream(
+        pod: PodAddress,
+        entityId: String,
+        messages: ZStream[Any, Throwable, BinaryMessage]
+      ): ZStream[Any, Throwable, Array[Byte]] = ZStream.empty
     })
 
   case class BinaryMessage(entityId: String, entityType: String, body: Array[Byte], replyId: Option[String])

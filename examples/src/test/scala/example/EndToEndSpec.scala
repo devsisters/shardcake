@@ -86,7 +86,7 @@ object EndToEndSpec extends ZIOSpecDefault {
             _       <- guild.send("guild1")(Join("user4", _))
             members <- guild.send[Try[Set[String]]]("guild1")(Join("user5", _))
             failure <- guild.send[Try[Set[String]]]("guild1")(Join("user6", _))
-            stream  <- guild.sendStream[String]("guild1")(Stream(_))
+            stream  <- guild.sendAndReceiveStream[String]("guild1")(Stream(_))
             res     <- stream.runCollect
           } yield assert(members)(isSuccess(hasSize(equalTo(5)))) &&
             assertTrue(failure.isFailure) &&

@@ -4,7 +4,7 @@ import com.devsisters.shardcake.CounterActor.CounterMessage._
 import com.devsisters.shardcake.CounterActor._
 import com.devsisters.shardcake.interfaces.{ Pods, Serialization, Storage }
 import zio.{ Config => _, _ }
-import zio.stream.SubscriptionRef
+import zio.stream.{ SubscriptionRef, ZStream }
 import zio.test.TestAspect.{ sequential, withLiveClock }
 import zio.test._
 
@@ -28,13 +28,13 @@ object ShardingSpec extends ZIOSpecDefault {
           } yield assertTrue(c1 == 2, c2 == 1)
         }
       },
-      test("Streaming") {
+      test("Response stream") {
         ZIO.scoped {
           for {
             _       <- Sharding.registerEntity(Counter, behavior)
             _       <- Sharding.registerScoped
             counter <- Sharding.messenger(Counter)
-            stream  <- counter.sendStream("c1")(StreamingChanges.apply)
+            stream  <- counter.sendAndReceiveStream("c1")(StreamingChanges.apply)
             latch   <- Promise.make[Nothing, Unit]
             fiber   <- stream.take(5).tap(_ => latch.succeed(())).runCollect.fork
             _       <- latch.await
@@ -46,13 +46,13 @@ object ShardingSpec extends ZIOSpecDefault {
           } yield assertTrue(items == Chunk(0, 1, 0, 1, 2))
         }
       },
-      test("Streaming interruption") {
+      test("Response stream interruption") {
         ZIO.scoped {
           for {
             _       <- Sharding.registerEntity(Counter, behavior)
             _       <- Sharding.registerScoped
             counter <- Sharding.messenger(Counter)
-            stream  <- counter.sendStream("c1")(StreamingChanges.apply)
+            stream  <- counter.sendAndReceiveStream("c1")(StreamingChanges.apply)
             latch   <- Promise.make[Nothing, Unit]
             fiber   <- stream.take(2).tap(_ => latch.succeed(())).runCollect.fork
             _       <- latch.await
@@ -112,6 +112,35 @@ object ShardingSpec extends ZIOSpecDefault {
             _   <- Sharding.registerScoped
             res <- p.await
           } yield assertTrue(res == ())
+        }
+      },
+      test("Send stream") {
+        ZIO.scoped {
+          for {
+            _       <- Sharding.registerEntity(Counter, behavior)
+            _       <- Sharding.registerScoped
+            counter <- Sharding.messenger(Counter)
+            _       <- counter.sendStream("c1")(ZStream.fromIterable(1 to 10000).as(IncrementCounter))
+            c0      <- counter.send("c1")(GetCounter.apply)
+          } yield assertTrue(c0 == 10000)
+        }
+      },
+      test("Send stream and receive a stream") {
+        ZIO.scoped {
+          for {
+            _       <- Sharding.registerEntity(Counter, behavior)
+            _       <- Sharding.registerScoped
+            counter <- Sharding.messenger(Counter)
+            stream  <- counter.sendStreamAndReceiveStream[Int]("c1")(replier =>
+                         ZStream.succeed(StreamingChanges(replier)) ++ ZStream.fromIterable(1 to 5).as(IncrementCounter)
+                       )
+            latch   <- Promise.make[Nothing, Unit]
+            fiber   <- stream.take(5).tap(_ => latch.succeed(())).runCollect.fork
+            _       <- latch.await
+            _       <- fiber.interrupt
+            _       <- Clock.sleep(1 second)
+            res     <- counter.send("c1")(GetCounter.apply)
+          } yield assertTrue(res == -1)
         }
       }
     ).provideShared(

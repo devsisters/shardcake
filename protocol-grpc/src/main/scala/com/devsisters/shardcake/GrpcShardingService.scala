@@ -22,7 +22,7 @@ abstract class GrpcShardingService(sharding: Sharding, timeout: Duration) extend
 
   def send(request: SendRequest): ZIO[Any, StatusException, SendResponse] =
     sharding
-      .sendToLocalEntitySingleReply(
+      .sendToLocalEntity(
         BinaryMessage(request.entityId, request.entityType, request.body.toByteArray, request.replyId)
       )
       .map {
@@ -32,10 +32,36 @@ abstract class GrpcShardingService(sharding: Sharding, timeout: Duration) extend
       .mapBoth(mapErrorToStatusWithInternalDetails, SendResponse(_))
       .timeoutFail(Status.ABORTED.withDescription("Timeout while handling sharding send grpc").asException())(timeout)
 
-  def sendStream(request: SendRequest): ZStream[Any, StatusException, SendResponse] =
+  def sendAndReceiveStream(request: SendRequest): ZStream[Any, StatusException, SendResponse] =
     sharding
-      .sendToLocalEntityStreamingReply(
+      .sendToLocalEntityAndReceiveStream(
         BinaryMessage(request.entityId, request.entityType, request.body.toByteArray, request.replyId)
+      )
+      .mapBoth(mapErrorToStatusWithInternalDetails, bytes => SendResponse(ByteString.copyFrom(bytes)))
+
+  def sendStream(
+    requests: ZStream[Any, StatusException, SendRequest]
+  ): ZIO[Any, StatusException, SendResponse] =
+    sharding
+      .sendStreamToLocalEntity(
+        requests.map(request =>
+          BinaryMessage(request.entityId, request.entityType, request.body.toByteArray, request.replyId)
+        )
+      )
+      .map {
+        case None      => ByteString.EMPTY
+        case Some(res) => ByteString.copyFrom(res)
+      }
+      .mapBoth(mapErrorToStatusWithInternalDetails, SendResponse(_))
+
+  def sendStreamAndReceiveStream(
+    requests: ZStream[Any, StatusException, SendRequest]
+  ): ZStream[Any, StatusException, SendResponse] =
+    sharding
+      .sendStreamToLocalEntityAndReceiveStream(
+        requests.map(request =>
+          BinaryMessage(request.entityId, request.entityType, request.body.toByteArray, request.replyId)
+        )
       )
       .mapBoth(mapErrorToStatusWithInternalDetails, bytes => SendResponse(ByteString.copyFrom(bytes)))
 

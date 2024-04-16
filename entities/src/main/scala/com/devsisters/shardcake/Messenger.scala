@@ -27,7 +27,19 @@ trait Messenger[-Msg] {
    * streaming responses. See `sendStreamAutoRestart` for an alternative that will automatically restart the stream
    * in case of rebalance.
    */
-  def sendStream[Res](entityId: String)(msg: StreamReplier[Res] => Msg): Task[ZStream[Any, Throwable, Res]]
+  def sendAndReceiveStream[Res](entityId: String)(msg: StreamReplier[Res] => Msg): Task[ZStream[Any, Throwable, Res]]
+
+  /**
+   * Send a stream of messages.
+   */
+  def sendStream(entityId: String)(messages: ZStream[Any, Throwable, Msg]): Task[Unit]
+
+  /**
+   * Send a stream of messages and receive a stream of responses of type `Res`.
+   */
+  def sendStreamAndReceiveStream[Res](entityId: String)(
+    messages: StreamReplier[Res] => ZStream[Any, Throwable, Msg]
+  ): Task[ZStream[Any, Throwable, Res]]
 
   /**
    * Send a message and receive a stream of responses of type `Res` while restarting the stream when the remote entity
@@ -38,11 +50,13 @@ trait Messenger[-Msg] {
    * cursor from the responses so that when the remote entity is rebalanced, a new message can be sent with the right
    * cursor according to what we've seen in the previous stream of responses.
    */
-  def sendStreamAutoRestart[Cursor, Res](entityId: String, cursor: Cursor)(msg: (Cursor, StreamReplier[Res]) => Msg)(
+  def sendAndReceiveStreamAutoRestart[Cursor, Res](entityId: String, cursor: Cursor)(
+    msg: (Cursor, StreamReplier[Res]) => Msg
+  )(
     updateCursor: (Cursor, Res) => Cursor
   ): ZStream[Any, Throwable, Res] =
     ZStream
-      .unwrap(sendStream[Res](entityId)(msg(cursor, _)))
+      .unwrap(sendAndReceiveStream[Res](entityId)(msg(cursor, _)))
       .either
       .mapAccum(cursor) {
         case (c, Right(res)) => updateCursor(c, res) -> Right(res)
@@ -52,7 +66,36 @@ trait Messenger[-Msg] {
         case Right(res)                              => ZStream.succeed(res)
         case Left((lastSeenCursor, StreamCancelled)) =>
           ZStream.execute(ZIO.sleep(200.millis)) ++
-            sendStreamAutoRestart(entityId, lastSeenCursor)(msg)(updateCursor)
+            sendAndReceiveStreamAutoRestart(entityId, lastSeenCursor)(msg)(updateCursor)
+        case Left((_, err))                          => ZStream.fail(err)
+      }
+
+  /**
+   * Send a stream of messages and receive a stream of responses of type `Res` while restarting the stream when the
+   * remote entity is rebalanced.
+   *
+   * To do so, we need a "cursor" so the stream of responses can be restarted where it ended before the rebalance. That
+   * is, the first message sent to the remote entity contains the given initial cursor value and we extract an updated
+   * cursor from the responses so that when the remote entity is rebalanced, a new message can be sent with the right
+   * cursor according to what we've seen in the previous stream of responses.
+   */
+  def sendStreamAndReceiveStreamAutoRestart[Cursor, Res](entityId: String, cursor: Cursor)(
+    msg: (Cursor, StreamReplier[Res]) => ZStream[Any, Throwable, Msg]
+  )(
+    updateCursor: (Cursor, Res) => Cursor
+  ): ZStream[Any, Throwable, Res] =
+    ZStream
+      .unwrap(sendStreamAndReceiveStream[Res](entityId)(msg(cursor, _)))
+      .either
+      .mapAccum(cursor) {
+        case (c, Right(res)) => updateCursor(c, res) -> Right(res)
+        case (c, Left(err))  => (c, Left(c -> err))
+      }
+      .flatMap {
+        case Right(res)                              => ZStream.succeed(res)
+        case Left((lastSeenCursor, StreamCancelled)) =>
+          ZStream.execute(ZIO.sleep(200.millis)) ++
+            sendStreamAndReceiveStreamAutoRestart(entityId, lastSeenCursor)(msg)(updateCursor)
         case Left((_, err))                          => ZStream.fail(err)
       }
 }

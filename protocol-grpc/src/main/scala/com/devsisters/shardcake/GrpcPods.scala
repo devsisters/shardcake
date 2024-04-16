@@ -81,20 +81,43 @@ class GrpcPods(
                 EntityNotManagedByThisPod(message.entityId)
               } else if (
                 ex.getStatus.getCode == Status.Code.UNAVAILABLE || ex.getStatus.getCode == Status.Code.CANCELLED
-              ) {
+              )
                 PodUnavailable(pod)
-              } else {
-                ex
-              },
+              else ex,
             res => if (res.body.isEmpty) None else Some(res.body.toByteArray)
           )
       )
 
-  def sendMessageStreaming(pod: PodAddress, message: BinaryMessage): ZStream[Any, Throwable, Array[Byte]] =
+  def sendStream(
+    pod: PodAddress,
+    entityId: String,
+    messages: ZStream[Any, Throwable, BinaryMessage]
+  ): Task[Option[Array[Byte]]] =
+    getConnection(pod)
+      .flatMap(
+        _.sendStream(
+          messages.mapBoth(
+            Status.INTERNAL.withCause(_).asException(),
+            message =>
+              SendRequest(message.entityId, message.entityType, ByteString.copyFrom(message.body), message.replyId)
+          )
+        ).mapBoth(
+          ex =>
+            if (ex.getStatus.getCode == Status.Code.RESOURCE_EXHAUSTED) {
+              // entity is not managed by this pod, wait and retry (assignments will be updated)
+              EntityNotManagedByThisPod(entityId)
+            } else if (ex.getStatus.getCode == Status.Code.UNAVAILABLE) PodUnavailable(pod)
+            else if (ex.getStatus.getCode == Status.Code.CANCELLED) StreamCancelled
+            else ex,
+          res => if (res.body.isEmpty) None else Some(res.body.toByteArray)
+        )
+      )
+
+  def sendMessageAndReceiveStream(pod: PodAddress, message: BinaryMessage): ZStream[Any, Throwable, Array[Byte]] =
     ZStream
       .fromZIO(getConnection(pod))
       .flatMap(
-        _.sendStream(
+        _.sendAndReceiveStream(
           SendRequest(message.entityId, message.entityType, ByteString.copyFrom(message.body), message.replyId)
         ).mapBoth(
           ex =>
@@ -103,9 +126,33 @@ class GrpcPods(
               EntityNotManagedByThisPod(message.entityId)
             } else if (ex.getStatus.getCode == Status.Code.UNAVAILABLE) PodUnavailable(pod)
             else if (ex.getStatus.getCode == Status.Code.CANCELLED) StreamCancelled
-            else {
-              ex
-            },
+            else ex,
+          _.body.toByteArray
+        )
+      )
+
+  def sendStreamAndReceiveStream(
+    pod: PodAddress,
+    entityId: String,
+    messages: ZStream[Any, Throwable, BinaryMessage]
+  ): ZStream[Any, Throwable, Array[Byte]] =
+    ZStream
+      .fromZIO(getConnection(pod))
+      .flatMap(
+        _.sendStreamAndReceiveStream(
+          messages.mapBoth(
+            Status.INTERNAL.withCause(_).asException(),
+            message =>
+              SendRequest(message.entityId, message.entityType, ByteString.copyFrom(message.body), message.replyId)
+          )
+        ).mapBoth(
+          ex =>
+            if (ex.getStatus.getCode == Status.Code.RESOURCE_EXHAUSTED) {
+              // entity is not managed by this pod, wait and retry (assignments will be updated)
+              EntityNotManagedByThisPod(entityId)
+            } else if (ex.getStatus.getCode == Status.Code.UNAVAILABLE) PodUnavailable(pod)
+            else if (ex.getStatus.getCode == Status.Code.CANCELLED) StreamCancelled
+            else ex,
           _.body.toByteArray
         )
       )
