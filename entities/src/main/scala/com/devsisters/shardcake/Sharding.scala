@@ -68,7 +68,7 @@ class Sharding private (
           ZIO.foreach(singletons) {
             case (name, run, None) =>
               ZIO.logDebug(s"Starting singleton $name") *>
-                Metrics.singletons.tagged("name", name).increment *>
+                Metrics.singletons.tagged("singleton_name", name).increment *>
                 run.forkDaemon.map(fiber => (name, run, Some(fiber)))
             case other             => ZIO.succeed(other)
           }
@@ -83,7 +83,7 @@ class Sharding private (
           ZIO.foreach(singletons) {
             case (name, run, Some(fiber)) =>
               ZIO.logDebug(s"Stopping singleton $name") *>
-                Metrics.singletons.tagged("name", name).decrement *>
+                Metrics.singletons.tagged("singleton_name", name).decrement *>
                 fiber.interrupt.as((name, run, None))
             case other                    => ZIO.succeed(other)
           }
