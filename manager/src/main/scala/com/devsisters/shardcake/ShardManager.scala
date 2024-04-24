@@ -76,6 +76,7 @@ class ShardManager(
                              )
                            }
           _             <- ManagerMetrics.pods.decrement
+          _             <- ManagerMetrics.assignedShards.tagged("pod_address", podAddress.toString).decrementBy(unassignments.size)
           _             <- ManagerMetrics.unassignedShards.incrementBy(unassignments.size)
           _             <- eventsHub.publish(ShardingEvent.PodUnregistered(podAddress))
           _             <- eventsHub
