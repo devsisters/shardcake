@@ -76,8 +76,8 @@ class ShardManager(
                              )
                            }
           _             <- ManagerMetrics.pods.decrement
-          _             <- eventsHub.publish(ShardingEvent.PodUnregistered(podAddress))
           _             <- ManagerMetrics.unassignedShards.incrementBy(unassignments.size)
+          _             <- eventsHub.publish(ShardingEvent.PodUnregistered(podAddress))
           _             <- eventsHub
                              .publish(ShardingEvent.ShardsUnassigned(podAddress, unassignments))
                              .when(unassignments.nonEmpty)
