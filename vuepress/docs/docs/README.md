@@ -54,6 +54,8 @@ Entities usually run on multiple pods, but a single entity will only run on a si
 - A **shard** is a logical group of entities that will always be located on the same pod.
 There might be millions of entities, so instead of keeping millions of entities-to-pods mappings, we group entities into shards and maintain reasonably-sized shards-to-pods mappings.
 
+![terminology diagram](/shardcake/terminology.png)
+
 ## Key components
 
 Shardcake is composed of 2 main components:

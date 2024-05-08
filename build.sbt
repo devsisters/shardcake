@@ -2,13 +2,14 @@ val scala213 = "2.13.13"
 val scala3   = "3.3.3"
 val allScala = Seq(scala213, scala3)
 
-val zioVersion            = "2.0.21"
-val zioGrpcVersion        = "0.6.0"
+val zioVersion            = "2.0.22"
+val zioGrpcVersion        = "0.6.2"
+val grpcNettyVersion      = "1.63.0"
 val zioK8sVersion         = "2.1.1"
 val zioCacheVersion       = "0.2.3"
 val zioCatsInteropVersion = "23.1.0.0"
 val sttpVersion           = "3.9.3"
-val calibanVersion        = "2.5.3"
+val calibanVersion        = "2.6.0"
 val redis4catsVersion     = "1.5.2"
 val redissonVersion       = "3.27.1"
 val scalaKryoVersion      = "1.0.2"
@@ -80,10 +81,7 @@ lazy val manager = project
   .settings(
     libraryDependencies ++=
       Seq(
-        "com.github.ghostdogpr"       %% "caliban"          % calibanVersion,
-        "com.github.ghostdogpr"       %% "caliban-quick"    % calibanVersion,
-        "com.github.ghostdogpr"       %% "caliban-zio-http" % calibanVersion,
-        "com.softwaremill.sttp.tapir" %% "tapir-json-zio"   % "1.9.8"
+        "com.github.ghostdogpr" %% "caliban-quick" % calibanVersion
       )
   )
 
@@ -170,8 +168,7 @@ lazy val grpcProtocol = project
       "com.thesamet.scalapb"          %% "scalapb-runtime"      % scalapb.compiler.Version.scalapbVersion % "protobuf",
       "com.thesamet.scalapb"          %% "scalapb-runtime-grpc" % scalapb.compiler.Version.scalapbVersion,
       "com.thesamet.scalapb.zio-grpc" %% "zio-grpc-core"        % zioGrpcVersion,
-      "io.grpc"                        % "grpc-netty"           % scalapb.compiler.Version.grpcJavaVersion,
-      "io.grpc"                        % "grpc-services"        % scalapb.compiler.Version.grpcJavaVersion
+      "io.grpc"                        % "grpc-netty"           % grpcNettyVersion
     )
   )
 

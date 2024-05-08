@@ -1,9 +1,7 @@
 package com.devsisters.shardcake
 
-import caliban.interop.tapir.WebSocketInterpreter
-import caliban.{ QuickAdapter, ZHttpAdapter }
+import caliban.QuickAdapter
 import caliban.wrappers.Wrappers.printErrors
-import sttp.tapir.json.zio._
 import zio.http.{ Server => ZServer, _ }
 import zio._
 
@@ -16,12 +14,11 @@ object Server {
     for {
       config      <- ZIO.service[ManagerConfig]
       interpreter <- (GraphQLApi.api @@ printErrors).interpreter
-      apiHandler   = QuickAdapter(interpreter).handlers.api
+      handlers     = QuickAdapter(interpreter).handlers
       routes       = Routes(
                        Method.ANY / "health"          -> Handler.ok,
-                       Method.ANY / "api" / "graphql" -> apiHandler,
-                       Method.ANY / "ws" / "graphql"  ->
-                         ZHttpAdapter.makeWebSocketService(WebSocketInterpreter(interpreter))
+                       Method.ANY / "api" / "graphql" -> handlers.api,
+                       Method.ANY / "ws" / "graphql"  -> handlers.webSocket
                      ) @@ Middleware.cors
       _           <- ZIO.logInfo(s"Shard Manager server started on port ${config.apiPort}.")
       nothing     <- ZServer
