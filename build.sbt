@@ -2,8 +2,8 @@ val scala213 = "2.13.13"
 val scala3   = "3.3.3"
 val allScala = Seq(scala213, scala3)
 
-val zioVersion            = "2.0.21"
-val zioGrpcVersion        = "0.6.0"
+val zioVersion            = "2.0.22"
+val zioGrpcVersion        = "0.6.2"
 val zioK8sVersion         = "2.1.1"
 val zioCacheVersion       = "0.2.3"
 val zioCatsInteropVersion = "23.1.0.0"
