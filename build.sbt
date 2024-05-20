@@ -58,7 +58,8 @@ lazy val root = project
     storageRedisson,
     serializationKryo,
     grpcProtocol,
-    examples
+    examples,
+    benchmarks
   )
 
 lazy val core = project
@@ -185,6 +186,14 @@ lazy val examples = project
       )
   )
   .dependsOn(manager, storageRedis, grpcProtocol, serializationKryo)
+
+lazy val benchmarks = project
+  .in(file("benchmarks"))
+  .settings(name := "benchmarks")
+  .settings(publish / skip := true)
+  .settings(commonSettings)
+  .enablePlugins(JmhPlugin)
+  .dependsOn(grpcProtocol, serializationKryo)
 
 lazy val protobuf = Seq(
   PB.protocVersion := "3.19.2"
