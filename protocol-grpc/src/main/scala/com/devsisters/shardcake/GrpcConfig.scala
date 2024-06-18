@@ -1,6 +1,7 @@
 package com.devsisters.shardcake
 
 import zio._
+import scalapb.zio_grpc.ZClientInterceptor
 
 import java.util.concurrent.Executor
 
@@ -11,9 +12,14 @@ import java.util.concurrent.Executor
  * @param executor a custom executor to pass to grpc-java when creating gRPC clients and servers
  * @param shutdownTimeout the timeout to wait for the gRPC server to shutdown before forcefully shutting it down
  */
-case class GrpcConfig(maxInboundMessageSize: Int, executor: Option[Executor], shutdownTimeout: Duration)
+case class GrpcConfig(
+  maxInboundMessageSize: Int,
+  executor: Option[Executor],
+  shutdownTimeout: Duration,
+  interceptors: Seq[ZClientInterceptor]
+)
 
 object GrpcConfig {
   val default: GrpcConfig =
-    GrpcConfig(maxInboundMessageSize = 32 * 1024 * 1024, None, 3.seconds)
+    GrpcConfig(maxInboundMessageSize = 32 * 1024 * 1024, None, 3.seconds, Seq.empty)
 }
