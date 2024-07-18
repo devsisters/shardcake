@@ -130,7 +130,7 @@ private[shardcake] object EntityManager {
                        (replyId match {
                          case Some(replyId) => sharding.initReply(replyId, replyChannel) *> queue.offer(req)
                          case None          => queue.offer(req) *> replyChannel.end
-                       }).catchAllCause(_ => send(entityId, req, replyId, replyChannel))
+                       }).catchAllCause(_ => Clock.sleep(100 millis) *> send(entityId, req, replyId, replyChannel))
                  }
       } yield ()
 
