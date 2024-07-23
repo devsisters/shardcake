@@ -139,7 +139,7 @@ class Sharding private (
       Metrics.shards
         .set(assignmentsOpt.count { case (_, podOpt) => podOpt.contains(address) })
         .when(fromShardManager) *>
-      (if (fromShardManager) shardAssignments.update(map => if (map.isEmpty) assignments else map)
+      (if (fromShardManager) shardAssignments.set(assignments)
        else
          shardAssignments.update(map =>
            // we keep self assignments (we don't override them with the new assignments
