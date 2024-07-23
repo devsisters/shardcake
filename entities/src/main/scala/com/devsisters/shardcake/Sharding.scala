@@ -214,8 +214,12 @@ class Sharding private (
     })
 
   private[shardcake] def initReply(id: String, replyChannel: ReplyChannel[Nothing]): UIO[Unit] =
-    replyChannels.update(_.updated(id, replyChannel)) <*
-      replyChannel.await.ensuring(replyChannels.update(_ - id)).forkDaemon
+    replyChannels
+      .getAndUpdate(_.updated(id, replyChannel))
+      .flatMap(beforeReplyChannels =>
+        replyChannel.await.ensuring(replyChannels.update(_ - id)).forkDaemon.unless(beforeReplyChannels.contains(id))
+      )
+      .unit
 
   def reply[Reply](reply: Reply, replier: Replier[Reply]): UIO[Unit] =
     replyChannels
