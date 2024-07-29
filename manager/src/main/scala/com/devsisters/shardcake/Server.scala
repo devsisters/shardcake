@@ -22,13 +22,10 @@ object Server {
                      ) @@ Middleware.cors
       _           <- ZIO.logInfo(s"Shard Manager server started on port ${config.apiPort}.")
       nothing     <- ZServer
-                       .serve(routes.toHttpApp)
+                       .serve(routes)
                        .provideSome[ShardManager](
                          ZServer.live,
-                         ZLayer.succeed(
-                           ZServer.Config.default
-                             .port(config.apiPort)
-                         )
+                         ZLayer.succeed(ZServer.Config.default.port(config.apiPort))
                        )
     } yield nothing
 }
