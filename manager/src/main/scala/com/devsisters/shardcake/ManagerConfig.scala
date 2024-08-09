@@ -21,7 +21,8 @@ case class ManagerConfig(
   pingTimeout: Duration,
   persistRetryInterval: Duration,
   persistRetryCount: Int,
-  rebalanceRate: Double
+  rebalanceRate: Double,
+  podHealthCheckInterval: Duration
 )
 
 object ManagerConfig {
@@ -34,6 +35,7 @@ object ManagerConfig {
       pingTimeout = 3 seconds,
       persistRetryInterval = 3 seconds,
       persistRetryCount = 100,
-      rebalanceRate = 2 / 100d
+      rebalanceRate = 2 / 100d,
+      podHealthCheckInterval = 10 seconds
     )
 }

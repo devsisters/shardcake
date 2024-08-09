@@ -46,14 +46,13 @@ class ShardManager(
 
   def notifyUnhealthyPod(podAddress: PodAddress): UIO[Unit] =
     ZIO
-      .whenZIO(stateRef.get.map(_.pods.contains(podAddress))) {
+      .whenZIODiscard(stateRef.get.map(_.pods.contains(podAddress))) {
         ManagerMetrics.podHealthChecked.tagged("pod_address", podAddress.toString).increment *>
           eventsHub.publish(ShardingEvent.PodHealthChecked(podAddress)) *>
           ZIO.unlessZIO(healthApi.isAlive(podAddress))(
             ZIO.logWarning(s"Pod $podAddress is not alive, unregistering") *> unregister(podAddress)
           )
       }
-      .unit
 
   def checkAllPodsHealth: UIO[Unit] =
     for {
@@ -267,6 +266,7 @@ object ShardManager {
                                           .repeat(Schedule.spaced(config.rebalanceInterval))
                                           .forkDaemon
         _                            <- shardManager.getShardingEvents.mapZIO(event => ZIO.logInfo(event.toString)).runDrain.forkDaemon
+        _                            <- shardManager.checkAllPodsHealth.repeat(Schedule.spaced(config.podHealthCheckInterval)).forkDaemon
         _                            <- ZIO.logInfo("Shard Manager loaded")
       } yield shardManager
     }
