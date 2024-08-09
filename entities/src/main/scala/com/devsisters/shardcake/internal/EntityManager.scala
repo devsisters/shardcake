@@ -2,7 +2,7 @@ package com.devsisters.shardcake.internal
 
 import com.devsisters.shardcake._
 import com.devsisters.shardcake.errors.EntityNotManagedByThisPod
-import zio.{Config => _, _}
+import zio.{ Config => _, _ }
 
 import java.util.concurrent.TimeUnit
 
