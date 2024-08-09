@@ -12,6 +12,7 @@ import zio._
  * @param persistRetryInterval retry interval for persistence of pods and shard assignments
  * @param persistRetryCount max retry count for persistence of pods and shard assignments
  * @param rebalanceRate max ratio of shards to rebalance at once
+ * @param podHealthCheckInterval interval for checking pod health
  */
 case class ManagerConfig(
   numberOfShards: Int,
