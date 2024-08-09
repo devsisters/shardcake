@@ -49,6 +49,7 @@ Here's the list of thing you can configure on the Shard Manager side:
 - `persistRetryInterval`: retry interval for persistence of pods and shard assignments
 - `persistRetryCount`: max retry count for persistence of pods and shard assignments
 - `rebalanceRate`: max ratio of shards to rebalance in a single iteration
+- `podHealthCheckInterval`: interval for checking pod health
 ::: tip Rebalance Rate
 The rebalance rate is there to prevent too many shards being assigned immediately to new pods.
 Instead of reaching a perfect spread right away, we can use several iterations to make sure new pods are able to handle the new shards. 
