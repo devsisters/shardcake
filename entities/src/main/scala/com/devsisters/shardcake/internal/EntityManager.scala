@@ -1,10 +1,8 @@
 package com.devsisters.shardcake.internal
 
-import com.devsisters.shardcake.errors.EntityNotManagedByThisPod
 import com.devsisters.shardcake._
-import zio.metrics.{ Metric, MetricState }
-import zio.metrics.MetricKeyType.Gauge
-import zio.{ Config => _, _ }
+import com.devsisters.shardcake.errors.EntityNotManagedByThisPod
+import zio.{Config => _, _}
 
 import java.util.concurrent.TimeUnit
 
