@@ -37,6 +37,6 @@ object ManagerConfig {
       persistRetryInterval = 3 seconds,
       persistRetryCount = 100,
       rebalanceRate = 2 / 100d,
-      podHealthCheckInterval = 10 seconds
+      podHealthCheckInterval = 1 minute
     )
 }
