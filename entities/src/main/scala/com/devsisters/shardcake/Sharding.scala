@@ -150,7 +150,7 @@ class Sharding private (
   }
 
   private[shardcake] val refreshAssignments: ZIO[Scope, Nothing, Unit] =
-    for {
+    (for {
       latch           <- Promise.make[Nothing, Unit]
       assignmentStream = ZStream.fromZIO(
                            // first, get the assignments from the shard manager directly
@@ -166,7 +166,13 @@ class Sharding private (
                            .forkDaemon
                            .withFinalizer(_.interrupt)
       _               <- latch.await
-    } yield ()
+    } yield ()).catchAllCause {
+      case cause if cause.isInterrupted =>
+        ZIO.unit
+      case cause                        =>
+        ZIO.logErrorCause(s"Error refreshing assignments, retrying...", cause) *>
+          refreshAssignments
+    }
 
   private[shardcake] def isShuttingDown: UIO[Boolean] =
     isShuttingDownRef.get
