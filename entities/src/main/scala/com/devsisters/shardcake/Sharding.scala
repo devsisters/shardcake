@@ -172,7 +172,7 @@ class Sharding private (
                            }
                            .forkDaemon
                            .withFinalizer(_.interrupt)
-      _ <- latch.await
+      _               <- latch.await
     } yield ()
 
   private[shardcake] def isShuttingDown: UIO[Boolean] =
