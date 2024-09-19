@@ -9,11 +9,7 @@ import scala.util.Success
 
 object BroadcastingSpec extends ZIOSpecDefault {
 
-  private val config = ZLayer.succeed(
-    Config.default.copy(
-      simulateRemotePods = true
-    )
-  )
+  private val config = ZLayer.succeed(Config.default)
 
   def spec: Spec[TestEnvironment with Scope, Any] =
     suite("BroadcastingSpec")(

@@ -13,7 +13,7 @@ val sttpVersion           = "3.9.6"
 val calibanVersion        = "2.8.1"
 val redis4catsVersion     = "1.5.2"
 val redissonVersion       = "3.27.1"
-val scalaKryoVersion      = "1.0.2"
+val scalaKryoVersion      = "1.2.0"
 val testContainersVersion = "0.41.3"
 val scalaCompatVersion    = "2.12.0"
 
@@ -212,6 +212,13 @@ lazy val commonSettings = Def.settings(
       "com.dimafeng" %% "testcontainers-scala-core" % testContainersVersion % Test
     ),
   Test / fork    := true,
+  Test / javaOptions ++= Seq(
+    // Kryo requires this with the recent versions of Java
+    "--add-opens=java.base/java.util=ALL-UNNAMED",
+    "--add-opens=java.base/java.lang=ALL-UNNAMED",
+    "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+    "--add-opens=java.sql/java.sql=ALL-UNNAMED"
+  ),
   scalacOptions ++= Seq(
     "-deprecation",
     "-encoding",

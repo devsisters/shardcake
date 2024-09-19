@@ -52,7 +52,10 @@ object StorageRedis {
 
         def savePods(pods: Map[PodAddress, Pod]): Task[Unit] =
           stringClient.del(config.podsKey) *>
-            stringClient.hSet(config.podsKey, pods.map { case (k, v) => k.toString -> v.version }).unit
+            stringClient
+              .hSet(config.podsKey, pods.map { case (k, v) => k.toString -> v.version })
+              .when(pods.nonEmpty)
+              .unit
       }
     }
 }

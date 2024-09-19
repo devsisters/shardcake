@@ -257,21 +257,15 @@ class Sharding private (
     replyId: Option[String],
     replyChannel: ReplyChannel[Res]
   ): Task[Unit] =
-    if (config.simulateRemotePods) {
-      serialization
-        .encode(msg)
-        .flatMap(bytes => sendToLocalEntity(BinaryMessage(entityId, recipientTypeName, bytes, replyId), replyChannel))
-    } else {
-      // if pod = self, shortcut and send directly without serialization
-      entityStates.get.flatMap(
-        _.get(recipientTypeName) match {
-          case Some(state) =>
-            state.entityManager.asInstanceOf[EntityManager[Msg]].send(entityId, msg, replyId, replyChannel)
-          case None        =>
-            ZIO.fail(new Exception(s"Entity type $recipientTypeName was not registered."))
-        }
-      )
-    }
+    // if pod = self, shortcut and send directly without serialization
+    entityStates.get.flatMap(
+      _.get(recipientTypeName) match {
+        case Some(state) =>
+          state.entityManager.asInstanceOf[EntityManager[Msg]].send(entityId, msg, replyId, replyChannel)
+        case None        =>
+          ZIO.fail(new Exception(s"Entity type $recipientTypeName was not registered."))
+      }
+    )
 
   private def sendToPod[Msg, Res](
     recipientTypeName: String,
@@ -281,7 +275,7 @@ class Sharding private (
     replyChannel: ReplyChannel[Res],
     replyId: Option[String]
   ): Task[Unit] =
-    if (pod == address) {
+    if (pod == address && !config.simulateRemotePods) {
       val run = sendChannel.foreach(sendToSelf(recipientTypeName, entityId, _, replyId, replyChannel))
       sendChannel match {
         case _: SendChannel.Single[_] => run
