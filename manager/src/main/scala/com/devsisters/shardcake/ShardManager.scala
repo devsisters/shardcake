@@ -30,19 +30,23 @@ class ShardManager(
   def getShardingEvents: ZStream[Any, Nothing, ShardingEvent] =
     ZStream.fromHub(eventsHub)
 
-  def register(pod: Pod): UIO[Unit] =
-    for {
-      _     <- ZIO.logInfo(s"Registering $pod")
-      state <- stateRef.updateAndGetZIO(state =>
-                 ZIO
-                   .succeed(OffsetDateTime.now())
-                   .map(cdt => state.copy(pods = state.pods.updated(pod.address, PodWithMetadata(pod, cdt))))
-               )
-      _     <- ManagerMetrics.pods.increment
-      _     <- eventsHub.publish(ShardingEvent.PodRegistered(pod.address))
-      _     <- ZIO.when(state.unassignedShards.nonEmpty)(rebalance(false))
-      _     <- persistPods.forkDaemon
-    } yield ()
+  def register(pod: Pod): Task[Unit] =
+    ZIO.ifZIO(healthApi.isAlive(pod.address))(
+      onTrue = for {
+        _     <- ZIO.logInfo(s"Registering $pod")
+        state <- stateRef.updateAndGetZIO(state =>
+                   ZIO
+                     .succeed(OffsetDateTime.now())
+                     .map(cdt => state.copy(pods = state.pods.updated(pod.address, PodWithMetadata(pod, cdt))))
+                 )
+        _     <- ManagerMetrics.pods.increment
+        _     <- eventsHub.publish(ShardingEvent.PodRegistered(pod.address))
+        _     <- ZIO.when(state.unassignedShards.nonEmpty)(rebalance(rebalanceImmediately = false))
+        _     <- persistPods.forkDaemon
+      } yield (),
+      onFalse = ZIO.logWarning(s"Pod $pod requested to register but is not alive, ignoring") *>
+        ZIO.fail(new RuntimeException(s"Pod $pod is not healthy, refusing to register"))
+    )
 
   def notifyUnhealthyPod(podAddress: PodAddress): UIO[Unit] =
     ZIO
