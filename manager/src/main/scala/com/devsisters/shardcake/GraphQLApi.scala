@@ -24,7 +24,11 @@ object GraphQLApi extends GenericSchema[ShardManager] {
   val api: GraphQL[ShardManager] =
     graphQL[ShardManager, Queries, Mutations, Subscriptions](
       RootResolver(
-        Queries(ZIO.serviceWithZIO(_.getAssignments.map(_.map { case (k, v) => Assignment(k, v) }.toList))),
+        Queries(
+          ZIO.serviceWithZIO(
+            _.getAssignments.map(_.map { case (k, v) => Assignment(k, v) }.toList.sortBy(_.shardId))
+          )
+        ),
         Mutations(
           pod => ZIO.serviceWithZIO(_.register(pod)),
           pod => ZIO.serviceWithZIO(_.unregister(pod.address)),

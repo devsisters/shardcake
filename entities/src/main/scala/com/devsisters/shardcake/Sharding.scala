@@ -102,7 +102,7 @@ class Sharding private (
         shardAssignments.update(shards.foldLeft(_) { case (map, shard) => map.updated(shard, address) }) *>
           Metrics.shards.incrementBy(shards.size) *>
           startSingletonsIfNeeded *>
-          ZIO.logDebug(s"Assigned shards: $shards")
+          ZIO.logDebug(s"Assigned shards: ${renderShardIds(shards)}")
       }
       .unit
 
@@ -110,7 +110,7 @@ class Sharding private (
     shardAssignments.update(shards.foldLeft(_) { case (map, shard) =>
       if (map.get(shard).contains(address)) map - shard else map
     }) *>
-      ZIO.logDebug(s"Unassigning shards: $shards") *>
+      ZIO.logDebug(s"Unassigning shards: ${renderShardIds(shards)}") *>
       entityStates.get.flatMap(state =>
         ZIO.foreachDiscard(state.values)(
           _.entityManager.terminateEntitiesOnShards(shards) // this will return once all shards are terminated
@@ -118,7 +118,7 @@ class Sharding private (
       ) *>
       Metrics.shards.decrementBy(shards.size) *>
       stopSingletonsIfNeeded *>
-      ZIO.logDebug(s"Unassigned shards: $shards")
+      ZIO.logDebug(s"Unassigned shards: ${renderShardIds(shards)}")
 
   private[shardcake] def isEntityOnLocalShards(recipientType: RecipientType[_], entityId: String): UIO[Boolean] =
     for {
