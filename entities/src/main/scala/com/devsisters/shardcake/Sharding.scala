@@ -140,14 +140,14 @@ class Sharding private (
 
   private def updateAssignments(
     assignmentsOpt: Map[ShardId, Option[PodAddress]],
-    fromShardManager: Boolean
+    replaceAllAssignments: Boolean
   ): UIO[Unit] = {
     val assignments = assignmentsOpt.flatMap { case (k, v) => v.map(k -> _) }
     ZIO.logDebug("Received new shard assignments") *>
       Metrics.shards
         .set(assignmentsOpt.count { case (_, podOpt) => podOpt.contains(address) })
-        .when(fromShardManager) *>
-      (if (fromShardManager) shardAssignments.set(assignments)
+        .when(replaceAllAssignments) *>
+      (if (replaceAllAssignments) shardAssignments.set(assignments)
        else
          shardAssignments.update(map =>
            // we keep self assignments (we don't override them with the new assignments
@@ -166,8 +166,8 @@ class Sharding private (
                          ) ++
                            // then, get assignments changes from Redis
                            storage.assignmentsStream.map(_ -> false)
-      _               <- assignmentStream.mapZIO { case (assignmentsOpt, fromShardManager) =>
-                           updateAssignments(assignmentsOpt, fromShardManager) *> latch.succeed(()).when(fromShardManager)
+      _               <- assignmentStream.mapZIO { case (assignmentsOpt, replaceAllAssignments) =>
+                           updateAssignments(assignmentsOpt, replaceAllAssignments) *> latch.succeed(()).when(replaceAllAssignments)
                          }.runDrain
                            .retry(Schedule.fixed(config.refreshAssignmentsRetryInterval))
                            .interruptible
@@ -254,7 +254,7 @@ class Sharding private (
           (shardManager.notifyUnhealthyPod(pod) *>
             // just in case we missed the update from the pubsub, refresh assignments
             shardManager.getAssignments
-              .flatMap[Any, Throwable, Unit](updateAssignments(_, fromShardManager = true))).forkDaemon
+              .flatMap[Any, Throwable, Unit](updateAssignments(_, replaceAllAssignments = false))).forkDaemon
         )
       }
 
