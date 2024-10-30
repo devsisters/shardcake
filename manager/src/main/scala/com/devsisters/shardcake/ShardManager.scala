@@ -234,11 +234,10 @@ object ShardManager {
                                           filteredPods.map { case (k, v) => k -> PodWithMetadata(v, cdt) },
                                           (1 to config.numberOfShards).map(_ -> None).toMap ++ filteredAssignments
                                         )
-        _                            <-
-          ZIO.logInfo(
-            s"Recovered pods ${filteredPods
-              .mkString("[", ", ", "]")} and assignments ${filteredAssignments.view.flatMap(_._2).mkString("[", ", ", "]")}"
-          )
+        _                            <- ZIO.logInfo(
+                                          s"Recovered pods ${filteredPods
+                                            .mkString("[", ", ", "]")} and assignments ${filteredAssignments.mkString("[", ", ", "]")}"
+                                        )
         _                            <- ManagerMetrics.pods.incrementBy(initialState.pods.size)
         _                            <- ZIO.foreachDiscard(initialState.shards) { case (_, podAddressOpt) =>
                                           podAddressOpt match {
