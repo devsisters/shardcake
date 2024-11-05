@@ -48,10 +48,10 @@ class ShardManager(
         ZIO.fail(new RuntimeException(s"Pod $pod is not healthy, refusing to register"))
     )
 
-  def notifyUnhealthyPod(podAddress: PodAddress): UIO[Unit] =
+  def notifyUnhealthyPod(podAddress: PodAddress, ignoreMetric: Boolean = false): UIO[Unit] =
     ZIO
       .whenZIODiscard(stateRef.get.map(_.pods.contains(podAddress))) {
-        ManagerMetrics.podHealthChecked.tagged("pod_address", podAddress.toString).increment *>
+        ManagerMetrics.podHealthChecked.tagged("pod_address", podAddress.toString).increment.unless(ignoreMetric) *>
           eventsHub.publish(ShardingEvent.PodHealthChecked(podAddress)) *>
           ZIO.unlessZIO(healthApi.isAlive(podAddress))(
             ZIO.logWarning(s"Pod $podAddress is not alive, unregistering") *> unregister(podAddress)
@@ -61,7 +61,7 @@ class ShardManager(
   def checkAllPodsHealth: UIO[Unit] =
     for {
       pods <- stateRef.get.map(_.pods.keySet)
-      _    <- ZIO.foreachParDiscard(pods)(notifyUnhealthyPod).withParallelism(4)
+      _    <- ZIO.foreachParDiscard(pods)(notifyUnhealthyPod(_, ignoreMetric = true)).withParallelism(4)
     } yield ()
 
   def unregister(podAddress: PodAddress): UIO[Unit] =
@@ -154,7 +154,7 @@ class ShardManager(
                                                            .map(_.flatten[PodAddress].toSet)
         failedPods                                     = failedPingedPods ++ failedUnassignedPods ++ failedAssignedPods
         // check if failing pods are still up
-        _                                             <- ZIO.foreachDiscard(failedPods)(notifyUnhealthyPod).forkDaemon
+        _                                             <- ZIO.foreachDiscard(failedPods)(notifyUnhealthyPod(_)).forkDaemon
         _                                             <- ZIO.logWarning(s"Failed to rebalance pods: $failedPods").when(failedPods.nonEmpty)
         // retry rebalancing later if there was any failure
         _                                             <- (Clock.sleep(config.rebalanceRetryInterval) *> rebalance(rebalanceImmediately)).forkDaemon
