@@ -154,7 +154,7 @@ class ShardManager(
                                                            .map(_.flatten[PodAddress].toSet)
         failedPods                                     = failedPingedPods ++ failedUnassignedPods ++ failedAssignedPods
         // check if failing pods are still up
-        _                                             <- ZIO.foreachDiscard(failedPods)(notifyUnhealthyPod).forkDaemon
+        _                                             <- ZIO.foreachDiscard(failedPods)(notifyUnhealthyPod(_)).forkDaemon
         _                                             <- ZIO.logWarning(s"Failed to rebalance pods: $failedPods").when(failedPods.nonEmpty)
         // retry rebalancing later if there was any failure
         _                                             <- (Clock.sleep(config.rebalanceRetryInterval) *> rebalance(rebalanceImmediately)).forkDaemon
