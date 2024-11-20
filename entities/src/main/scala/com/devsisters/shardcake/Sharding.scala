@@ -250,12 +250,7 @@ class Sharding private (
             )
             .map(_ isEqual cdt)
         )
-        ZIO.whenZIO(notify)(
-          (shardManager.notifyUnhealthyPod(pod) *>
-            // just in case we missed the update from the pubsub, refresh assignments
-            shardManager.getAssignments
-              .flatMap[Any, Throwable, Unit](updateAssignments(_, replaceAllAssignments = false))).forkDaemon
-        )
+        ZIO.whenZIO(notify)(shardManager.notifyUnhealthyPod(pod).forkDaemon)
       }
 
   private def sendToSelf[Msg, Res](
