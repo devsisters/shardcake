@@ -1,20 +1,7 @@
 package com.devsisters.shardcake
 
-import com.coralogix.zio.k8s.client.{
-  CodingFailure,
-  DecodedFailure,
-  DeserializationFailure,
-  Gone,
-  HttpFailure,
-  InvalidEvent,
-  K8sFailure,
-  K8sRequestInfo,
-  NotFound,
-  RequestFailure,
-  Unauthorized,
-  UndefinedField
-}
-import com.coralogix.zio.k8s.client.model.{ FieldSelector, LabelSelector }
+import com.coralogix.zio.k8s.client._
+import com.coralogix.zio.k8s.client.model.FieldSelector
 import com.coralogix.zio.k8s.client.v1.pods.Pods
 import com.coralogix.zio.k8s.model.pkg.apis.meta.v1.Status
 import com.devsisters.shardcake.interfaces.PodsHealth
@@ -97,6 +84,9 @@ object K8sPodsHealth {
 
       case NotFound =>
         new K8sException("not found")
+
+      case ErrorEvent(status, message, reason, code) =>
+        new K8sException(s"error event with status $status, reason $reason, code $code: $message")
     }
 
   private def toLogString(requestInfo: K8sRequestInfo) = {
