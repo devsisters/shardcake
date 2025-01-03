@@ -1,15 +1,15 @@
 package com.devsisters.shardcake
 
-import com.devsisters.shardcake.interfaces.{ Pods, Serialization, Storage }
-import zio.{ Config => _, _ }
+import com.devsisters.shardcake.interfaces.{ Serialization, Storage }
 import zio.test.TestAspect.{ sequential, withLiveClock }
 import zio.test._
+import zio.{ Config => _, _ }
 
 import scala.util.Success
 
 object BroadcastingSpec extends ZIOSpecDefault {
 
-  private val config = ZLayer.succeed(Config.default)
+  private val config = ZLayer.succeed(Config.default.copy(simulateRemotePods = true))
 
   def spec: Spec[TestEnvironment with Scope, Any] =
     suite("BroadcastingSpec")(
@@ -28,9 +28,8 @@ object BroadcastingSpec extends ZIOSpecDefault {
         }
       }
     ).provideShared(
-      Sharding.live,
       Serialization.javaSerialization,
-      Pods.noop,
+      LocalSharding.live,
       ShardManagerClient.local,
       Storage.memory,
       config

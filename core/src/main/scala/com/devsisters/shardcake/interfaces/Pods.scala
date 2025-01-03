@@ -60,7 +60,7 @@ object Pods {
 
   /**
    * A layer that creates a service that does nothing when called.
-   * Useful for testing ShardManager or when using Sharding.local.
+   * Useful for testing ShardManager or when we don't need messages being sent.
    */
   val noop: ULayer[Pods] =
     ZLayer.succeed(new Pods {
