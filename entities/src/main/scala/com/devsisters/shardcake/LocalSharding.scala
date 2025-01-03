@@ -7,12 +7,12 @@ import zio.stream.ZStream
 
 object LocalSharding {
 
-  private trait LocalQueue {
+  trait LocalQueue {
     def localQueue: Queue[LocalQueueMessage]
   }
 
-  private sealed trait LocalQueueMessage
-  private object LocalQueueMessage {
+  sealed trait LocalQueueMessage
+  object LocalQueueMessage {
     case class SendMessage(request: BinaryMessage, response: Promise[Nothing, Option[Array[Byte]]])
         extends LocalQueueMessage
     case class SendStream(
@@ -29,7 +29,7 @@ object LocalSharding {
     ) extends LocalQueueMessage
   }
 
-  private val localQueue: ULayer[LocalQueue] =
+  val localQueue: ULayer[LocalQueue] =
     ZLayer(
       Queue
         .unbounded[LocalQueueMessage]
@@ -40,7 +40,7 @@ object LocalSharding {
         )
     )
 
-  private val localPods: URLayer[LocalQueue, Pods] =
+  val localPods: URLayer[LocalQueue, Pods] =
     ZLayer {
       ZIO.serviceWith[LocalQueue](_.localQueue).map { queue =>
         new Pods {
@@ -86,7 +86,7 @@ object LocalSharding {
       }
     }
 
-  private val localServer: RLayer[Sharding with LocalQueue, Unit] =
+  val localServer: RLayer[Sharding with LocalQueue, Unit] =
     ZLayer.scoped {
       for {
         sharding <- ZIO.service[Sharding]
