@@ -2,11 +2,11 @@ package com.devsisters.shardcake
 
 import com.devsisters.shardcake.CounterActor.CounterMessage._
 import com.devsisters.shardcake.CounterActor._
-import com.devsisters.shardcake.interfaces.{ Pods, Serialization, Storage }
-import zio.{ Config => _, _ }
+import com.devsisters.shardcake.interfaces.{ Serialization, Storage }
 import zio.stream.{ SubscriptionRef, ZStream }
 import zio.test.TestAspect.{ sequential, withLiveClock }
 import zio.test._
+import zio.{ Config => _, _ }
 
 object ShardingSpec extends ZIOSpecDefault {
   def spec: Spec[TestEnvironment with Scope, Any] =
@@ -144,9 +144,8 @@ object ShardingSpec extends ZIOSpecDefault {
         }
       }
     ).provideShared(
-      Sharding.live,
       Serialization.javaSerialization,
-      Pods.noop,
+      LocalSharding.live,
       ShardManagerClient.local,
       Storage.memory,
       ZLayer.succeed(Config.default)
