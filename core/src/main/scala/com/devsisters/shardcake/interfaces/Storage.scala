@@ -1,6 +1,6 @@
 package com.devsisters.shardcake.interfaces
 
-import com.devsisters.shardcake.{ Pod, PodAddress, ShardId }
+import com.devsisters.shardcake.{ Pod, PodAddress, Role, ShardId }
 import zio.{ Ref, Task, ZLayer }
 import zio.stream.{ SubscriptionRef, ZStream }
 
@@ -12,17 +12,17 @@ trait Storage {
   /**
    * Get the current state of shard assignments to pods
    */
-  def getAssignments: Task[Map[ShardId, Option[PodAddress]]]
+  def getAssignments(role: Role): Task[Map[ShardId, Option[PodAddress]]]
 
   /**
    * Save the current state of shard assignments to pods
    */
-  def saveAssignments(assignments: Map[ShardId, Option[PodAddress]]): Task[Unit]
+  def saveAssignments(role: Role, assignments: Map[ShardId, Option[PodAddress]]): Task[Unit]
 
   /**
    * A stream that will emit the state of shard assignments whenever it changes
    */
-  def assignmentsStream: ZStream[Any, Throwable, Map[Int, Option[PodAddress]]]
+  def assignmentsStream(role: Role): ZStream[Any, Throwable, Map[Int, Option[PodAddress]]]
 
   /**
    * Get the list of existing pods
@@ -47,11 +47,13 @@ object Storage {
         assignmentsRef <- SubscriptionRef.make(Map.empty[ShardId, Option[PodAddress]])
         podsRef        <- Ref.make(Map.empty[PodAddress, Pod])
       } yield new Storage {
-        def getAssignments: Task[Map[ShardId, Option[PodAddress]]]                       = assignmentsRef.get
-        def saveAssignments(assignments: Map[ShardId, Option[PodAddress]]): Task[Unit]   = assignmentsRef.set(assignments)
-        def assignmentsStream: ZStream[Any, Throwable, Map[ShardId, Option[PodAddress]]] = assignmentsRef.changes
-        def getPods: Task[Map[PodAddress, Pod]]                                          = podsRef.get
-        def savePods(pods: Map[PodAddress, Pod]): Task[Unit]                             = podsRef.set(pods)
+        def getAssignments(role: Role): Task[Map[ShardId, Option[PodAddress]]]                       = assignmentsRef.get
+        def saveAssignments(role: Role, assignments: Map[ShardId, Option[PodAddress]]): Task[Unit]   =
+          assignmentsRef.set(assignments)
+        def assignmentsStream(role: Role): ZStream[Any, Throwable, Map[ShardId, Option[PodAddress]]] =
+          assignmentsRef.changes
+        def getPods: Task[Map[PodAddress, Pod]]                                                      = podsRef.get
+        def savePods(pods: Map[PodAddress, Pod]): Task[Unit]                                         = podsRef.set(pods)
       }
     }
 }

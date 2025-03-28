@@ -1,7 +1,7 @@
 package com.devsisters.shardcake.interfaces
 
 import com.devsisters.shardcake.interfaces.Pods.BinaryMessage
-import com.devsisters.shardcake.{ PodAddress, ShardId }
+import com.devsisters.shardcake.{ PodAddress, Role, ShardId }
 import zio.stream.ZStream
 import zio.{ Task, ULayer, ZIO, ZLayer }
 
@@ -15,12 +15,12 @@ trait Pods {
   /**
    * Notify a pod that it was assigned a list of shards
    */
-  def assignShards(pod: PodAddress, shards: Set[ShardId]): Task[Unit]
+  def assignShards(pod: PodAddress, shards: Set[ShardId], role: Role): Task[Unit]
 
   /**
    * Notify a pod that it was unassigned a list of shards
    */
-  def unassignShards(pod: PodAddress, shards: Set[ShardId]): Task[Unit]
+  def unassignShards(pod: PodAddress, shards: Set[ShardId], role: Role): Task[Unit]
 
   /**
    * Check that a pod is responsive
@@ -64,8 +64,8 @@ object Pods {
    */
   val noop: ULayer[Pods] =
     ZLayer.succeed(new Pods {
-      def assignShards(pod: PodAddress, shards: Set[ShardId]): Task[Unit]                                            = ZIO.unit
-      def unassignShards(pod: PodAddress, shards: Set[ShardId]): Task[Unit]                                          = ZIO.unit
+      def assignShards(pod: PodAddress, shards: Set[ShardId], role: Role): Task[Unit]                                = ZIO.unit
+      def unassignShards(pod: PodAddress, shards: Set[ShardId], role: Role): Task[Unit]                              = ZIO.unit
       def ping(pod: PodAddress): Task[Unit]                                                                          = ZIO.unit
       def sendMessage(pod: PodAddress, message: BinaryMessage): Task[Option[Array[Byte]]]                            = ZIO.none
       def sendStream(

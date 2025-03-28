@@ -9,6 +9,7 @@ val grpcNettyVersion      = "1.71.0"
 val zioK8sVersion         = "3.1.0"
 val zioCacheVersion       = "0.2.4"
 val zioCatsInteropVersion = "23.1.0.5"
+val zioJsonVersion        = "0.7.39"
 val sttpVersion           = "3.10.3"
 val calibanVersion        = "2.10.0"
 val redis4catsVersion     = "1.7.2"
@@ -73,6 +74,7 @@ lazy val core = project
       Seq(
         "dev.zio"                %% "zio"                     % zioVersion,
         "dev.zio"                %% "zio-streams"             % zioVersion,
+        "dev.zio"                %% "zio-json"                % zioJsonVersion,
         "org.scala-lang.modules" %% "scala-collection-compat" % scalaCompatVersion
       )
   )
