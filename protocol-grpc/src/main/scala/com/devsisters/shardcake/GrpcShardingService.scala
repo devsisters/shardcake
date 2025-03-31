@@ -97,7 +97,7 @@ object GrpcShardingService {
                          }
         services      <-
           ServiceList
-            .add(new GrpcShardingService(sharding, config.sendTimeout) {}.transform(grpcConfig.servicetransform))
+            .add(new GrpcShardingService(sharding, config.sendTimeout) {}.transform(grpcConfig.serviceTransform))
             .bindAll
         server: Server = services
                            .foldLeft(builder) { case (builder0, service) => builder0.addService(service) }
