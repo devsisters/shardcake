@@ -81,20 +81,22 @@ class ShardManager(
       for {
         _             <- ZIO.logInfo(s"Unregistering $podAddress")
         unassignments <- stateRef.modify { states =>
-                           val previous = states.get(role)
+                           val stateOpt = states.get(role)
                            (
-                             previous
+                             stateOpt
                                .map(_.shards.collect { case (shard, Some(p)) if p == podAddress => shard }.toSet)
                                .getOrElse(Set.empty),
-                             previous
-                               .map(p =>
-                                 p.copy(
-                                   pods = p.pods - podAddress,
-                                   shards =
-                                     p.shards.map { case (k, v) => k -> (if (v.contains(podAddress)) None else v) }
+                             stateOpt.fold(states)(state =>
+                               states.updated(
+                                 role,
+                                 state.copy(
+                                   pods = state.pods - podAddress,
+                                   shards = state.shards.map { case (k, v) =>
+                                     k -> (if (v.contains(podAddress)) None else v)
+                                   }
                                  )
                                )
-                               .fold(states)(states.updated(role, _))
+                             )
                            )
                          }
         _             <- ManagerMetrics.pods.decrement
