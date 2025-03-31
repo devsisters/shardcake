@@ -1,6 +1,7 @@
 package com.devsisters.shardcake
 
 import zio._
+import zio.http.HandlerAspect
 
 /**
  * Shard Manager configuration
@@ -23,7 +24,8 @@ case class ManagerConfig(
   persistRetryInterval: Duration,
   persistRetryCount: Int,
   rebalanceRate: Double,
-  podHealthCheckInterval: Duration
+  podHealthCheckInterval: Duration,
+  httpHandler: HandlerAspect[Any, Unit]
 )
 
 object ManagerConfig {
@@ -37,6 +39,7 @@ object ManagerConfig {
       persistRetryInterval = 3 seconds,
       persistRetryCount = 100,
       rebalanceRate = 2 / 100d,
-      podHealthCheckInterval = 1 minute
+      podHealthCheckInterval = 1 minute,
+      httpHandler = HandlerAspect.identity
     )
 }

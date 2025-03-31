@@ -17,8 +17,8 @@ object Server {
       handlers     = QuickAdapter(interpreter).handlers
       routes       = Routes(
                        Method.ANY / "health"          -> Handler.ok,
-                       Method.ANY / "api" / "graphql" -> handlers.api,
-                       Method.ANY / "ws" / "graphql"  -> handlers.webSocket
+                       Method.ANY / "api" / "graphql" -> handlers.api @@ config.httpHandler,
+                       Method.ANY / "ws" / "graphql"  -> handlers.webSocket @@ config.httpHandler
                      ) @@ Middleware.cors
       _           <- ZIO.logInfo(s"Shard Manager server started on port ${config.apiPort}.")
       nothing     <- ZServer

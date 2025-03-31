@@ -95,7 +95,10 @@ object GrpcShardingService {
                            case None           =>
                              ServerBuilder.forPort(config.shardingPort)
                          }
-        services      <- ServiceList.add(new GrpcShardingService(sharding, config.sendTimeout) {}).bindAll
+        services      <-
+          ServiceList
+            .add(new GrpcShardingService(sharding, config.sendTimeout) {}.transform(grpcConfig.servicetransform))
+            .bindAll
         server: Server = services
                            .foldLeft(builder) { case (builder0, service) => builder0.addService(service) }
                            .addService(ProtoReflectionService.newInstance())

@@ -1,9 +1,12 @@
 package com.devsisters.shardcake
 
 import zio._
+import io.grpc.StatusException
+import scalapb.zio_grpc.GTransform
 import scalapb.zio_grpc.ZClientInterceptor
 
 import java.util.concurrent.Executor
+import scalapb.zio_grpc.RequestContext
 
 /**
  * The configuration for the gRPC client.
@@ -17,10 +20,11 @@ case class GrpcConfig(
   maxInboundMessageSize: Int,
   executor: Option[Executor],
   shutdownTimeout: Duration,
-  interceptors: Seq[ZClientInterceptor]
+  interceptors: Seq[ZClientInterceptor],
+  servicetransform: GTransform[RequestContext, StatusException, RequestContext, StatusException]
 )
 
 object GrpcConfig {
   val default: GrpcConfig =
-    GrpcConfig(maxInboundMessageSize = 32 * 1024 * 1024, None, 3.seconds, Seq.empty)
+    GrpcConfig(maxInboundMessageSize = 32 * 1024 * 1024, None, 3.seconds, Seq.empty, GTransform.identity)
 }
