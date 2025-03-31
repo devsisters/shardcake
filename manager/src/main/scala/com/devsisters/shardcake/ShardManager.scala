@@ -43,7 +43,7 @@ class ShardManager(
                    val state    = previous.copy(pods = previous.pods.updated(pod.address, PodWithMetadata(pod, cdt)))
                    (state, states.updated(pod.role, state))
                  }
-        _     <- ManagerMetrics.pods.increment
+        _     <- ManagerMetrics.pods.tagged("role", pod.role.name).increment
         _     <- eventsHub.publish(ShardingEvent.PodRegistered(pod.address, pod.role))
         _     <- ZIO.when(state.unassignedShards.nonEmpty)(
                    rebalance(pod.role, rebalanceImmediately = false).forkDaemon
@@ -99,7 +99,7 @@ class ShardManager(
                              )
                            )
                          }
-        _             <- ManagerMetrics.pods.decrement
+        _             <- ManagerMetrics.pods.tagged("role", role.name).decrement
         _             <- ManagerMetrics.assignedShards
                            .tagged("role", role.name)
                            .tagged("pod_address", podAddress.toString)
@@ -317,22 +317,22 @@ object ShardManager {
                                      config.getNumberOfShards(role)
                                    )
                                  }
-        _                     <- ManagerMetrics.pods.incrementBy(filteredPods.size)
         _                     <- ZIO
                                    .foreachDiscard(initialStates) { case (role, state) =>
-                                     ZIO.foreachDiscard(state.shards) { case (_, podAddressOpt) =>
-                                       podAddressOpt match {
-                                         case Some(podAddress) =>
-                                           ManagerMetrics.assignedShards
-                                             .tagged("role", role.name)
-                                             .tagged("pod_address", podAddress.toString)
-                                             .increment
-                                         case None             =>
-                                           ManagerMetrics.unassignedShards
-                                             .tagged("role", role.name)
-                                             .increment
+                                     ManagerMetrics.pods.tagged("role", role.name).incrementBy(state.pods.size) *>
+                                       ZIO.foreachDiscard(state.shards) { case (_, podAddressOpt) =>
+                                         podAddressOpt match {
+                                           case Some(podAddress) =>
+                                             ManagerMetrics.assignedShards
+                                               .tagged("role", role.name)
+                                               .tagged("pod_address", podAddress.toString)
+                                               .increment
+                                           case None             =>
+                                             ManagerMetrics.unassignedShards
+                                               .tagged("role", role.name)
+                                               .increment
+                                         }
                                        }
-                                     }
                                    }
         state                 <- Ref.Synchronized.make(initialStates)
         rebalanceSemaphores   <- Ref.Synchronized.make(Map.empty[Role, Semaphore])
