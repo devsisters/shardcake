@@ -24,8 +24,7 @@ case class ManagerConfig(
   persistRetryInterval: Duration,
   persistRetryCount: Int,
   rebalanceRate: Double,
-  podHealthCheckInterval: Duration,
-  httpHandler: HandlerAspect[Any, Unit]
+  podHealthCheckInterval: Duration
 )
 
 object ManagerConfig {
@@ -39,7 +38,6 @@ object ManagerConfig {
       persistRetryInterval = 3 seconds,
       persistRetryCount = 100,
       rebalanceRate = 2 / 100d,
-      podHealthCheckInterval = 1 minute,
-      httpHandler = HandlerAspect.identity
+      podHealthCheckInterval = 1 minute
     )
 }
