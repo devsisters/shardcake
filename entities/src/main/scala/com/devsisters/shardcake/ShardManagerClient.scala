@@ -57,10 +57,8 @@ object ShardManagerClient {
     }
 
   class ShardManagerClientLive(sttp: SttpBackend[Task, Any], config: Config) extends ShardManagerClient {
-    private def send[Origin: IsOperation, A](query: SelectionBuilder[Origin, A]): Task[A] = {
-      val request = query.toRequest(config.shardManagerUri)
-      sttp.send(request.copy(headers = config.managerClientHeaderInterceptor(request.headers))).map(_.body).absolve
-    }
+    private def send[Origin: IsOperation, A](query: SelectionBuilder[Origin, A]): Task[A] =
+      sttp.send(query.toRequest(config.shardManagerUri)).map(_.body).absolve
 
     def register(podAddress: PodAddress): Task[Unit] =
       send(

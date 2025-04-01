@@ -1,7 +1,6 @@
 package com.devsisters.shardcake
 
 import sttp.client3.UriContext
-import sttp.model.Header
 import sttp.model.Uri
 import zio._
 
@@ -30,8 +29,7 @@ case class Config(
   sendTimeout: Duration,
   refreshAssignmentsRetryInterval: Duration,
   unhealthyPodReportInterval: Duration,
-  simulateRemotePods: Boolean,
-  managerClientHeaderInterceptor: Seq[Header] => Seq[Header]
+  simulateRemotePods: Boolean
 )
 
 object Config {
@@ -46,7 +44,6 @@ object Config {
     sendTimeout = 10 seconds,
     refreshAssignmentsRetryInterval = 5 seconds,
     unhealthyPodReportInterval = 5 seconds,
-    simulateRemotePods = false,
-    managerClientHeaderInterceptor = headers => headers
+    simulateRemotePods = false
   )
 }

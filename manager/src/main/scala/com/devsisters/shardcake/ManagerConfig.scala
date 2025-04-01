@@ -1,7 +1,6 @@
 package com.devsisters.shardcake
 
 import zio._
-import zio.http.HandlerAspect
 
 /**
  * Shard Manager configuration
