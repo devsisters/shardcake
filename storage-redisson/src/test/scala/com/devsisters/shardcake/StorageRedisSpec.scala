@@ -34,13 +34,13 @@ object StorageRedisSpec extends ZIOSpecDefault {
       } yield client
     }
 
-  private val role = Role("default")
+  private val role = Role.default
 
   def spec: Spec[TestEnvironment with Scope, Any] =
     suite("StorageRedisSpec")(
       test("save and get pods") {
         val expected =
-          List(Pod(PodAddress("host1", 1), "1.0.0", Set(role)), Pod(PodAddress("host2", 2), "2.0.0", Set(role)))
+          List(Pod(PodAddress("host1", 1), "1.0.0", role), Pod(PodAddress("host2", 2), "2.0.0", role))
             .map(p => p.address -> p)
             .toMap
         for {
