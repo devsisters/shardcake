@@ -20,11 +20,11 @@ case class GrpcConfig(
   maxInboundMessageSize: Int,
   executor: Option[Executor],
   shutdownTimeout: Duration,
-  interceptors: Seq[ZClientInterceptor],
-  serviceTransform: GTransform[RequestContext, StatusException, RequestContext, StatusException]
+  clientInterceptors: Seq[ZClientInterceptor],
+  serverInterceptors: Seq[GTransform[RequestContext, StatusException, RequestContext, StatusException]]
 )
 
 object GrpcConfig {
   val default: GrpcConfig =
-    GrpcConfig(maxInboundMessageSize = 32 * 1024 * 1024, None, 3.seconds, Seq.empty, GTransform.identity)
+    GrpcConfig(maxInboundMessageSize = 32 * 1024 * 1024, None, 3.seconds, Seq.empty, Seq.empty)
 }
