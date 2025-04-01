@@ -14,7 +14,8 @@ import scalapb.zio_grpc.RequestContext
  * @param maxInboundMessageSize the maximum message size allowed to be received by the grpc client
  * @param executor a custom executor to pass to grpc-java when creating gRPC clients and servers
  * @param shutdownTimeout the timeout to wait for the gRPC server to shutdown before forcefully shutting it down
- * @param interceptors the interceptors to be used by the gRPC client, e.g for adding tracing or logging
+ * @param clientInterceptors the interceptors to be used by the gRPC client, e.g for adding tracing or logging
+ * @param serverInterceptors the interceptors to be used by the gRPC Server, e.g for adding tracing or logging
  */
 case class GrpcConfig(
   maxInboundMessageSize: Int,
