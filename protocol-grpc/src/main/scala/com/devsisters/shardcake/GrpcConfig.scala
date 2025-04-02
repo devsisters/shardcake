@@ -1,12 +1,11 @@
 package com.devsisters.shardcake
 
 import zio._
-import io.grpc.StatusException
-import scalapb.zio_grpc.GTransform
+import scalapb.zio_grpc.RequestContext
 import scalapb.zio_grpc.ZClientInterceptor
+import scalapb.zio_grpc.ZTransform
 
 import java.util.concurrent.Executor
-import scalapb.zio_grpc.RequestContext
 
 /**
  * The configuration for the gRPC client.
@@ -22,7 +21,7 @@ case class GrpcConfig(
   executor: Option[Executor],
   shutdownTimeout: Duration,
   clientInterceptors: Seq[ZClientInterceptor],
-  serverInterceptors: Seq[GTransform[RequestContext, StatusException, RequestContext, StatusException]]
+  serverInterceptors: Seq[ZTransform[RequestContext, Any]]
 )
 
 object GrpcConfig {
