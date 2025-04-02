@@ -17,6 +17,7 @@ import zio._
  * @param refreshAssignmentsRetryInterval retry interval in case of failure getting shard assignments from storage
  * @param unhealthyPodReportInterval interval to report unhealthy pods to the Shard Manager (this exists to prevent calling the Shard Manager for each failed message)
  * @param simulateRemotePods disable optimizations when sending a message to an entity hosted on the local shards (this will force serialization of all messages)
+ * @param role role of the current pod
  */
 case class Config(
   numberOfShards: Int,
@@ -29,7 +30,8 @@ case class Config(
   sendTimeout: Duration,
   refreshAssignmentsRetryInterval: Duration,
   unhealthyPodReportInterval: Duration,
-  simulateRemotePods: Boolean
+  simulateRemotePods: Boolean,
+  role: Role
 )
 
 object Config {
@@ -44,6 +46,7 @@ object Config {
     sendTimeout = 10 seconds,
     refreshAssignmentsRetryInterval = 5 seconds,
     unhealthyPodReportInterval = 5 seconds,
-    simulateRemotePods = false
+    simulateRemotePods = false,
+    role = Role.default
   )
 }

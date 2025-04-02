@@ -37,25 +37,27 @@ class Sharding private (
   val register: Task[Unit] =
     ZIO.logDebug(s"Registering pod $address to Shard Manager") *>
       isShuttingDownRef.set(false) *>
-      shardManager.register(address)
+      shardManager.register(address, config.role)
 
   val unregister: UIO[Unit] =
     // ping the shard manager first to stop if it's not available
-    shardManager.getAssignments.foldCauseZIO(
-      ZIO.logWarningCause("Shard Manager not available. Can't unregister cleanly", _),
-      _ =>
-        ZIO.logDebug(s"Stopping local entities") *>
-          isShuttingDownRef.set(true) *>
-          entityStates.get.flatMap(
-            ZIO.foreachDiscard(_) { case (name, entity) =>
-              entity.entityManager.terminateAllEntities.forkDaemon // run in a daemon fiber to make sure it doesn't get interrupted
-                .flatMap(_.join)
-                .catchAllCause(ZIO.logErrorCause(s"Error during stop of entity $name", _))
-            }
-          ) *>
-          ZIO.logDebug(s"Unregistering pod $address to Shard Manager") *>
-          shardManager.unregister(address).catchAllCause(ZIO.logErrorCause("Error during unregister", _))
-    )
+    shardManager
+      .getAssignments(config.role)
+      .foldCauseZIO(
+        ZIO.logWarningCause("Shard Manager not available. Can't unregister cleanly", _),
+        _ =>
+          ZIO.logDebug(s"Stopping local entities") *>
+            isShuttingDownRef.set(true) *>
+            entityStates.get.flatMap(
+              ZIO.foreachDiscard(_) { case (name, entity) =>
+                entity.entityManager.terminateAllEntities.forkDaemon // run in a daemon fiber to make sure it doesn't get interrupted
+                  .flatMap(_.join)
+                  .catchAllCause(ZIO.logErrorCause(s"Error during stop of entity $name", _))
+              }
+            ) *>
+            ZIO.logDebug(s"Unregistering pod $address to Shard Manager") *>
+            shardManager.unregister(address, config.role).catchAllCause(ZIO.logErrorCause("Error during unregister", _))
+      )
 
   val isSingletonNode: UIO[Boolean] =
     // Start singletons on the pod hosting shard 1.
@@ -162,10 +164,10 @@ class Sharding private (
       latch           <- Promise.make[Nothing, Unit]
       assignmentStream = ZStream.fromZIO(
                            // first, get the assignments from the shard manager directly
-                           shardManager.getAssignments.map(_ -> true)
+                           shardManager.getAssignments(config.role).map(_ -> true)
                          ) ++
                            // then, get assignments changes from Redis
-                           storage.assignmentsStream.map(_ -> false)
+                           storage.assignmentsStream(config.role).map(_ -> false)
       _               <- assignmentStream.mapZIO { case (assignmentsOpt, replaceAllAssignments) =>
                            updateAssignments(assignmentsOpt, replaceAllAssignments) *> latch.succeed(()).when(replaceAllAssignments)
                          }.runDrain
