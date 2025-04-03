@@ -33,22 +33,22 @@ class ShardManager(
   def register(pod: Pod): Task[Unit] =
     ZIO.ifZIO(healthApi.isAlive(pod.address))(
       onTrue = for {
-        _     <- ZIO.logInfo(s"Registering $pod")
-        _     <- ZIO.whenZIO(stateRef.get.map(_.exists { case (role, state) =>
-                   state.pods.get(pod.address).exists(_ => role != pod.role)
-                 }))(ZIO.fail(new RuntimeException(s"Pod $pod is already registered with a different role")))
-        cdt   <- ZIO.succeed(OffsetDateTime.now())
-        state <- stateRef.modify { states =>
-                   val previous = states.getOrElse(pod.role, ShardManagerState(config.getNumberOfShards(pod.role)))
-                   val state    = previous.copy(pods = previous.pods.updated(pod.address, PodWithMetadata(pod, cdt)))
-                   (state, states.updated(pod.role, state))
-                 }
-        _     <- ManagerMetrics.pods.tagged("role", pod.role.name).increment
-        _     <- eventsHub.publish(ShardingEvent.PodRegistered(pod.address, pod.role))
-        _     <- ZIO.when(state.unassignedShards.nonEmpty)(
-                   rebalance(pod.role, rebalanceImmediately = false).forkDaemon
-                 )
-        _     <- persistPods.forkDaemon
+        _                <- ZIO.logInfo(s"Registering $pod")
+        _                <- ZIO.whenZIO(stateRef.get.map(_.exists { case (role, state) =>
+                              state.pods.get(pod.address).exists(_ => role != pod.role)
+                            }))(ZIO.fail(new RuntimeException(s"Pod $pod is already registered with a different role")))
+        cdt              <- ZIO.succeed(OffsetDateTime.now())
+        triggerRebalance <- stateRef.modify { states =>
+                              val previous =
+                                states.getOrElse(pod.role, ShardManagerState(config.getNumberOfShards(pod.role)))
+                              val state    =
+                                previous.copy(pods = previous.pods.updated(pod.address, PodWithMetadata(pod, cdt)))
+                              (state.unassignedShards.nonEmpty, states.updated(pod.role, state))
+                            }
+        _                <- ManagerMetrics.pods.tagged("role", pod.role.name).increment
+        _                <- eventsHub.publish(ShardingEvent.PodRegistered(pod.address, pod.role))
+        _                <- ZIO.when(triggerRebalance)(rebalance(pod.role, rebalanceImmediately = false).forkDaemon)
+        _                <- persistPods.forkDaemon
       } yield (),
       onFalse = ZIO.logWarning(s"Pod $pod requested to register but is not alive, ignoring") *>
         ZIO.fail(new RuntimeException(s"Pod $pod is not healthy, refusing to register"))
