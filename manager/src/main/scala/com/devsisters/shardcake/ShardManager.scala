@@ -217,14 +217,8 @@ class ShardManager(
       )
     )
 
-  private val persistAllAssignments: UIO[Unit] =
-    withRetry(
-      stateRef.get.flatMap(states =>
-        ZIO.foreachDiscard(states) { case (role, assignments) =>
-          stateRepository.saveAssignments(role, assignments.shards)
-        }
-      )
-    )
+  private def persistAllAssignments: UIO[Unit] =
+    stateRef.get.flatMap(states => ZIO.foreachDiscard(states.keys)(persistAssignments))
 
   private def persistPods: UIO[Unit] =
     withRetry(
