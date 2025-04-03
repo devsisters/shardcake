@@ -57,7 +57,7 @@ private[shardcake] object EntityManager {
     config: Config,
     entityMaxIdleTime: Option[Duration]
   ) extends EntityManager[Req] {
-    private val gauge = Metrics.entities.tagged("type", recipientType.name)
+    private val gauge = Metrics.entities.tagged("role", config.role.name).tagged("type", recipientType.name)
 
     private def startExpirationFiber(entityId: String): UIO[Fiber[Nothing, Unit]] = {
       val maxIdleTime = entityMaxIdleTime getOrElse config.entityMaxIdleTime

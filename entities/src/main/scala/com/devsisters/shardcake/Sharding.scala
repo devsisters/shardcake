@@ -70,7 +70,7 @@ class Sharding private (
           ZIO.foreach(singletons) {
             case (name, run, None) =>
               ZIO.logDebug(s"Starting singleton $name") *>
-                Metrics.singletons.tagged("singleton_name", name).increment *>
+                Metrics.singletons.tagged("role", config.role.name).tagged("singleton_name", name).increment *>
                 run.forkDaemon.map(fiber => (name, run, Some(fiber)))
             case other             => ZIO.succeed(other)
           }
@@ -85,7 +85,7 @@ class Sharding private (
           ZIO.foreach(singletons) {
             case (name, run, Some(fiber)) =>
               ZIO.logDebug(s"Stopping singleton $name") *>
-                Metrics.singletons.tagged("singleton_name", name).decrement *>
+                Metrics.singletons.tagged("role", config.role.name).tagged("singleton_name", name).decrement *>
                 fiber.interrupt.as((name, run, None))
             case other                    => ZIO.succeed(other)
           }
@@ -102,7 +102,7 @@ class Sharding private (
     ZIO
       .unlessZIO(isShuttingDown) {
         shardAssignments.update(shards.foldLeft(_) { case (map, shard) => map.updated(shard, address) }) *>
-          Metrics.shards.incrementBy(shards.size) *>
+          Metrics.shards.tagged("role", config.role.name).incrementBy(shards.size) *>
           startSingletonsIfNeeded *>
           ZIO.logDebug(s"Assigned shards: ${renderShardIds(shards)}")
       }
@@ -118,7 +118,7 @@ class Sharding private (
           _.entityManager.terminateEntitiesOnShards(shards) // this will return once all shards are terminated
         )
       ) *>
-      Metrics.shards.decrementBy(shards.size) *>
+      Metrics.shards.tagged("role", config.role.name).decrementBy(shards.size) *>
       stopSingletonsIfNeeded *>
       ZIO.logDebug(s"Unassigned shards: ${renderShardIds(shards)}")
 
@@ -147,6 +147,7 @@ class Sharding private (
     val assignments = assignmentsOpt.flatMap { case (k, v) => v.map(k -> _) }
     ZIO.logDebug("Received new shard assignments") *>
       Metrics.shards
+        .tagged("role", config.role.name)
         .set(assignmentsOpt.count { case (_, podOpt) => podOpt.contains(address) })
         .when(replaceAllAssignments) *>
       (if (replaceAllAssignments) shardAssignments.set(assignments)
