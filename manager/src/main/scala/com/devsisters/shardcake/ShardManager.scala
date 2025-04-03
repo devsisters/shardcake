@@ -481,8 +481,7 @@ object ShardManager {
           }
           // don't assign too many shards to the same pods, unless we need rebalance immediately
           .filter { case (pod, _) =>
-            rebalanceImmediately ||
-              assignments.count { case (_, p) => p == pod } < state.shards.size * rebalanceRate
+            rebalanceImmediately || assignments.count { case (_, p) => p == pod } < state.shards.size * rebalanceRate
           }
           // don't assign to a pod that was unassigned in the same rebalance
           .filterNot { case (pod, _) => unassignedPods.contains(pod) }
