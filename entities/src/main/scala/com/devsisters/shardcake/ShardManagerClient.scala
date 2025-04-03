@@ -13,7 +13,7 @@ import zio.{ Config => _, _ }
  */
 trait ShardManagerClient {
   def register(podAddress: PodAddress, role: Role): Task[Unit]
-  def unregister(podAddress: PodAddress, role: Role): Task[Unit]
+  def unregister(podAddress: PodAddress): Task[Unit]
   def notifyUnhealthyPod(podAddress: PodAddress): Task[Unit]
   def getAssignments(role: Role): Task[Map[Int, Option[PodAddress]]]
 }
@@ -50,7 +50,7 @@ object ShardManagerClient {
         shards  = (1 to config.numberOfShards).map(_ -> Some(pod)).toMap
       } yield new ShardManagerClient {
         def register(podAddress: PodAddress, role: Role): Task[Unit]       = ZIO.unit
-        def unregister(podAddress: PodAddress, role: Role): Task[Unit]     = ZIO.unit
+        def unregister(podAddress: PodAddress): Task[Unit]                 = ZIO.unit
         def notifyUnhealthyPod(podAddress: PodAddress): Task[Unit]         = ZIO.unit
         def getAssignments(role: Role): Task[Map[Int, Option[PodAddress]]] = ZIO.succeed(shards)
       }
@@ -69,14 +69,8 @@ object ShardManagerClient {
         )
       ).unit
 
-    def unregister(podAddress: PodAddress, role: Role): Task[Unit] =
-      send(
-        GraphQLClient.Mutations.unregister(
-          PodAddressInput(podAddress.host, podAddress.port),
-          config.serverVersion,
-          RoleInput(role.name)
-        )
-      ).unit
+    def unregister(podAddress: PodAddress): Task[Unit] =
+      send(GraphQLClient.Mutations.unregister(PodAddressInput(podAddress.host, podAddress.port))).unit
 
     def notifyUnhealthyPod(podAddress: PodAddress): Task[Unit] =
       ZIO.logWarning(s"Notifying Shard Manager about unhealthy pod $podAddress") *>

@@ -16,7 +16,7 @@ object GraphQLApi extends GenericSchema[ShardManager] {
   case class PodAddressArgs(podAddress: PodAddress)
   case class Mutations(
     register: Pod => RIO[ShardManager, Unit],
-    unregister: Pod => RIO[ShardManager, Unit],
+    unregister: PodAddressArgs => RIO[ShardManager, Unit],
     notifyUnhealthyPod: PodAddressArgs => URIO[ShardManager, Unit],
     checkAllPodsHealth: URIO[ShardManager, Unit]
   )
@@ -32,7 +32,7 @@ object GraphQLApi extends GenericSchema[ShardManager] {
         ),
         Mutations(
           pod => ZIO.serviceWithZIO(_.register(pod)),
-          pod => ZIO.serviceWithZIO(_.unregister(pod.address)),
+          args => ZIO.serviceWithZIO(_.unregister(args.podAddress)),
           args => ZIO.serviceWithZIO(_.notifyUnhealthyPod(args.podAddress)),
           ZIO.serviceWithZIO(_.checkAllPodsHealth)
         ),

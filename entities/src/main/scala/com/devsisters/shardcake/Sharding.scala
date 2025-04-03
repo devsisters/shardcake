@@ -56,7 +56,7 @@ class Sharding private (
               }
             ) *>
             ZIO.logDebug(s"Unregistering pod $address to Shard Manager") *>
-            shardManager.unregister(address, config.role).catchAllCause(ZIO.logErrorCause("Error during unregister", _))
+            shardManager.unregister(address).catchAllCause(ZIO.logErrorCause("Error during unregister", _))
       )
 
   val isSingletonNode: UIO[Boolean] =

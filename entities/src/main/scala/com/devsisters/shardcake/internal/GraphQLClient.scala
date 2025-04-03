@@ -8,8 +8,7 @@ private[shardcake] object GraphQLClient {
 
   type Assignment
   object Assignment {
-    def shardId: SelectionBuilder[Assignment, Int]                                                             =
-      _root_.caliban.client.SelectionBuilder.Field("shardId", Scalar())
+    def shardId: SelectionBuilder[Assignment, Int]                                                             = _root_.caliban.client.SelectionBuilder.Field("shardId", Scalar())
     def pod[A](innerSelection: SelectionBuilder[PodAddress, A]): SelectionBuilder[Assignment, scala.Option[A]] =
       _root_.caliban.client.SelectionBuilder.Field("pod", OptionOf(Obj(innerSelection)))
   }
@@ -112,19 +111,13 @@ private[shardcake] object GraphQLClient {
           Argument("role", role, "RoleInput!")(encoder2)
         )
       )
-    def unregister(address: PodAddressInput, version: String, role: RoleInput)(implicit
-      encoder0: ArgEncoder[PodAddressInput],
-      encoder1: ArgEncoder[String],
-      encoder2: ArgEncoder[RoleInput]
+    def unregister(podAddress: PodAddressInput)(implicit
+      encoder0: ArgEncoder[PodAddressInput]
     ): SelectionBuilder[_root_.caliban.client.Operations.RootMutation, scala.Option[Unit]] =
       _root_.caliban.client.SelectionBuilder.Field(
         "unregister",
         OptionOf(Scalar()),
-        arguments = List(
-          Argument("address", address, "PodAddressInput!")(encoder0),
-          Argument("version", version, "String!")(encoder1),
-          Argument("role", role, "RoleInput!")(encoder2)
-        )
+        arguments = List(Argument("podAddress", podAddress, "PodAddressInput!")(encoder0))
       )
     def notifyUnhealthyPod(podAddress: PodAddressInput)(implicit
       encoder0: ArgEncoder[PodAddressInput]
