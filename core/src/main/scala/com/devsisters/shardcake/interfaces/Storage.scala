@@ -22,7 +22,7 @@ trait Storage {
   /**
    * A stream that will emit the state of shard assignments whenever it changes
    */
-  def assignmentsStream(role: Role): ZStream[Any, Throwable, Map[Int, Option[PodAddress]]]
+  def assignmentsStream(role: Role): ZStream[Any, Throwable, Map[ShardId, Option[PodAddress]]]
 
   /**
    * Get the list of existing pods
