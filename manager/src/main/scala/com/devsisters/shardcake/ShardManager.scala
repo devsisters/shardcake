@@ -262,10 +262,11 @@ object ShardManager {
         podApi              <- ZIO.service[Pods]
         oldPods             <- stateRepository.getPods
         // remove unhealthy pods on startup
-        failedFilteredPods  <- ZIO.partitionPar(oldPods.values) { pod =>
-                                 ZIO.ifZIO(healthApi.isAlive(pod))(ZIO.succeed(pod), ZIO.fail(pod))
+        aliveStatuses       <- ZIO.foreachPar(oldPods.values)(pod => healthApi.isAlive(pod).map(pod -> _))
+        (failedPods, pods)   = aliveStatuses.partitionMap {
+                                 case (pod, false) => Left(pod)
+                                 case (pod, true)  => Right(pod)
                                }
-        (failedPods, pods)   = failedFilteredPods
         _                   <- ZIO.whenDiscard(failedPods.nonEmpty)(
                                  ZIO.logInfo(s"Ignoring pods that are no longer alive ${failedPods.mkString("[", ", ", "]")}")
                                )
@@ -274,33 +275,31 @@ object ShardManager {
                                )
         podsByAddress        = pods.map(p => p.address -> p).toMap
         podsByRole           = pods.groupBy(_.role)
-        roleAssignments     <- ZIO
+        assignments         <- ZIO
                                  .foreach(podsByRole.keySet) { role =>
                                    for {
-                                     assignments                  <- stateRepository.getAssignments(role)
-                                     failedFilteredAssignments     = partitionMap(assignments) {
-                                                                       case assignment @ (_, Some(address))
-                                                                           if podsByAddress.contains(address) =>
-                                                                         Right(assignment)
-                                                                       case assignment => Left(assignment)
-                                                                     }
-                                     (failed, filteredAssignments) = failedFilteredAssignments
-                                     failedAssignments             = failed.collect { case (shard, Some(addr)) => shard -> addr }
-                                     _                            <-
+                                     oldAssignments       <- stateRepository.getAssignments(role)
+                                     (failed, assignments) = partitionMap(oldAssignments) {
+                                                               case assignment @ (_, Some(address))
+                                                                   if podsByAddress.contains(address) =>
+                                                                 Right(assignment)
+                                                               case assignment => Left(assignment)
+                                                             }
+                                     failedAssignments     = failed.collect { case (shard, Some(addr)) => shard -> addr }
+                                     _                    <-
                                        ZIO.whenDiscard(failedAssignments.nonEmpty)(
                                          ZIO.logWarning(
                                            s"Ignoring assignments for pods that are no longer alive for role ${role.name}: ${failedAssignments
                                              .mkString("[", ", ", "]")}"
                                          )
                                        )
-                                     _                            <-
-                                       ZIO.whenDiscard(filteredAssignments.nonEmpty)(
+                                     _                    <-
+                                       ZIO.whenDiscard(assignments.nonEmpty)(
                                          ZIO.logInfo(
-                                           s"Recovered assignments for role ${role.name}: ${filteredAssignments
-                                             .mkString("[", ", ", "]")}"
+                                           s"Recovered assignments for role ${role.name}: ${assignments.mkString("[", ", ", "]")}"
                                          )
                                        )
-                                   } yield role -> filteredAssignments
+                                   } yield role -> assignments
                                  }
                                  .map(_.toMap)
         cdt                 <- ZIO.succeed(OffsetDateTime.now())
@@ -308,7 +307,7 @@ object ShardManager {
                                  role -> ShardManagerState(
                                    pods.map(pod => pod.address -> PodWithMetadata(pod, cdt)).toMap,
                                    (1 to config.numberOfShards(role)).map(_ -> None).toMap ++
-                                     roleAssignments.getOrElse(role, Map.empty),
+                                     assignments.getOrElse(role, Map.empty),
                                    config.numberOfShards(role)
                                  )
                                }
