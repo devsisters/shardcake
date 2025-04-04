@@ -24,7 +24,7 @@ object K8sPodsHealth {
                     .make(
                       config.cacheSize,
                       config.cacheDuration,
-                      Lookup { pod: Pod =>
+                      Lookup { (pod: Pod) =>
                         pods
                           .getAll(
                             config.namespace(pod.role),
