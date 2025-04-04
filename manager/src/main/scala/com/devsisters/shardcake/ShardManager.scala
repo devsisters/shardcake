@@ -424,7 +424,7 @@ object ShardManager {
       ShardManagerState(Map.empty, (1 to numberOfShards).map(_ -> None).toMap, numberOfShards)
   }
 
-  case class PodWithMetadata(pod: Pod, registered: OffsetDateTime)
+  case class PodWithMetadata(pod: Pod, registeredAt: OffsetDateTime)
 
   sealed trait ShardingEvent
   object ShardingEvent {
@@ -463,7 +463,7 @@ object ShardManager {
       state.shards.get(shard).flatten.fold((Int.MinValue, OffsetDateTime.MIN)) { podAddress =>
         (
           state.shardsPerPod.get(podAddress).fold(Int.MinValue)(-_.size),
-          state.pods.get(podAddress).fold(OffsetDateTime.MIN)(_.registered)
+          state.pods.get(podAddress).fold(OffsetDateTime.MIN)(_.registeredAt)
         )
       }
     }
