@@ -25,10 +25,10 @@ object Server {
         pod     = PodAddress("localhost", config.shardingPort)
         shards  = (1 to config.numberOfShards).map(_ -> Some(pod)).toMap
       } yield new ShardManagerClient {
-        def register(podAddress: PodAddress, role: Role): Task[Unit]       = ZIO.unit
-        def unregister(podAddress: PodAddress): Task[Unit]                 = ZIO.unit
-        def notifyUnhealthyPod(podAddress: PodAddress): Task[Unit]         = ZIO.unit
-        def getAssignments(role: Role): Task[Map[Int, Option[PodAddress]]] = ZIO.succeed(shards)
+        def register(podAddress: PodAddress, role: Role): Task[Unit]           = ZIO.unit
+        def unregister(podAddress: PodAddress): Task[Unit]                     = ZIO.unit
+        def notifyUnhealthyPod(podAddress: PodAddress): Task[Unit]             = ZIO.unit
+        def getAssignments(role: Role): Task[Map[ShardId, Option[PodAddress]]] = ZIO.succeed(shards)
       }
     }
 
