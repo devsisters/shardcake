@@ -65,7 +65,7 @@ class Sharding private (
 
   private def startSingletonsIfNeeded: UIO[Unit] =
     ZIO
-      .whenZIO(isSingletonNode) {
+      .whenZIODiscard(isSingletonNode) {
         singletons.updateZIO { singletons =>
           ZIO.foreach(singletons) {
             case (name, run, None) =>
@@ -76,11 +76,10 @@ class Sharding private (
           }
         }
       }
-      .unit
 
   private def stopSingletonsIfNeeded: UIO[Unit] =
     ZIO
-      .unlessZIO(isSingletonNode) {
+      .unlessZIODiscard(isSingletonNode) {
         singletons.updateZIO { singletons =>
           ZIO.foreach(singletons) {
             case (name, run, Some(fiber)) =>
@@ -91,7 +90,6 @@ class Sharding private (
           }
         }
       }
-      .unit
 
   def registerSingleton[R](name: String, run: URIO[R, Nothing]): URIO[R, Unit] =
     ZIO.environment[R].flatMap(env => singletons.update(list => (name, run.provideEnvironment(env), None) :: list)) <*
@@ -149,7 +147,7 @@ class Sharding private (
       Metrics.shards
         .tagged("role", config.role.name)
         .set(assignmentsOpt.count { case (_, podOpt) => podOpt.contains(address) })
-        .when(replaceAllAssignments) *>
+        .whenDiscard(replaceAllAssignments) *>
       (if (replaceAllAssignments) shardAssignments.set(assignments)
        else
          shardAssignments.update(map =>
@@ -170,7 +168,9 @@ class Sharding private (
                            // then, get assignments changes from Redis
                            storage.assignmentsStream(config.role).map(_ -> false)
       _               <- assignmentStream.mapZIO { case (assignmentsOpt, replaceAllAssignments) =>
-                           updateAssignments(assignmentsOpt, replaceAllAssignments) *> latch.succeed(()).when(replaceAllAssignments)
+                           updateAssignments(assignmentsOpt, replaceAllAssignments) *> latch
+                             .succeed(())
+                             .whenDiscard(replaceAllAssignments)
                          }.runDrain
                            .retry(Schedule.fixed(config.refreshAssignmentsRetryInterval))
                            .interruptible
@@ -242,9 +242,9 @@ class Sharding private (
       .modify(repliers => (repliers.get(replier.id), repliers - replier.id))
       .flatMap(ZIO.foreachDiscard(_)(_.asInstanceOf[ReplyChannel[Reply]].replyStream(replies)))
 
-  private def handleError(ex: Throwable): ZIO[Any, Nothing, Any] =
+  private def handleError(ex: Throwable): ZIO[Any, Nothing, Unit] =
     ZIO
-      .whenCase(ex) { case PodUnavailable(pod) =>
+      .whenCaseDiscard(ex) { case PodUnavailable(pod) =>
         val notify = Clock.currentDateTime.flatMap(cdt =>
           lastUnhealthyNodeReported
             .updateAndGet(old =>
@@ -253,7 +253,7 @@ class Sharding private (
             )
             .map(_ isEqual cdt)
         )
-        ZIO.whenZIO(notify)(shardManager.notifyUnhealthyPod(pod).forkDaemon)
+        ZIO.whenZIODiscard(notify)(shardManager.notifyUnhealthyPod(pod).forkDaemon)
       }
 
   private def sendToSelf[Msg, Res](
