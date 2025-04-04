@@ -1,6 +1,6 @@
 package com.devsisters.shardcake.interfaces
 
-import com.devsisters.shardcake.PodAddress
+import com.devsisters.shardcake.{ Pod, PodAddress, Role }
 import zio.{ UIO, ULayer, ZIO, ZLayer }
 
 /**
@@ -15,7 +15,7 @@ trait PodsHealth {
   /**
    * Check if a pod is still alive.
    */
-  def isAlive(podAddress: PodAddress): UIO[Boolean]
+  def isAlive(pod: Pod): UIO[Boolean]
 }
 
 object PodsHealth {
@@ -26,7 +26,7 @@ object PodsHealth {
    */
   val noop: ULayer[PodsHealth] =
     ZLayer.succeed(new PodsHealth {
-      def isAlive(podAddress: PodAddress): UIO[Boolean] = ZIO.succeed(true)
+      def isAlive(pod: Pod): UIO[Boolean] = ZIO.succeed(true)
     })
 
   /**
@@ -35,6 +35,6 @@ object PodsHealth {
    */
   val local: ZLayer[Pods, Nothing, PodsHealth] =
     ZLayer {
-      ZIO.serviceWith[Pods](podApi => (podAddress: PodAddress) => podApi.ping(podAddress).option.map(_.isDefined))
+      ZIO.serviceWith[Pods](podApi => (pod: Pod) => podApi.ping(pod.address).option.map(_.isDefined))
     }
 }

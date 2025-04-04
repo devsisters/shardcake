@@ -31,7 +31,7 @@ class ShardManager(
     ZStream.fromHub(eventsHub)
 
   def register(pod: Pod): Task[Unit] =
-    ZIO.ifZIO(healthApi.isAlive(pod.address))(
+    ZIO.ifZIO(healthApi.isAlive(pod))(
       onTrue = for {
         _                <- ZIO.logInfo(s"Registering $pod")
         _                <- ZIO.whenZIO(stateRef.get.map(_.exists { case (role, state) =>
@@ -54,18 +54,19 @@ class ShardManager(
         ZIO.fail(new RuntimeException(s"Pod $pod is not healthy, refusing to register"))
     )
 
-  private def podExists(podAddress: PodAddress): UIO[Boolean] =
-    podRole(podAddress).map(_.isDefined)
-
-  private def podRole(podAddress: PodAddress): UIO[Option[Role]] =
-    stateRef.get.map(_.collectFirst { case (role, state) if state.pods.contains(podAddress) => role })
+  private def findPod(podAddress: PodAddress): UIO[Option[Pod]] =
+    stateRef.get
+      .map(_.values.collectFirst {
+        case state if state.pods.contains(podAddress) => state.pods.get(podAddress).map(_.pod)
+      })
+      .map(_.flatten)
 
   def notifyUnhealthyPod(podAddress: PodAddress, ignoreMetric: Boolean = false): UIO[Unit] =
     ZIO
-      .whenZIODiscard(podExists(podAddress)) {
+      .whenCaseZIODiscard(findPod(podAddress)) { case Some(pod) =>
         ManagerMetrics.podHealthChecked.tagged("pod_address", podAddress.toString).increment.unless(ignoreMetric) *>
           eventsHub.publish(ShardingEvent.PodHealthChecked(podAddress)) *>
-          ZIO.unlessZIO(healthApi.isAlive(podAddress))(
+          ZIO.unlessZIO(healthApi.isAlive(pod))(
             ZIO.logWarning(s"Pod $podAddress is not alive, unregistering") *> unregister(podAddress)
           )
       }
@@ -77,18 +78,18 @@ class ShardManager(
     } yield ()
 
   def unregister(podAddress: PodAddress): UIO[Unit] =
-    ZIO.whenCaseZIODiscard(podRole(podAddress)) { case Some(role) =>
+    ZIO.whenCaseZIODiscard(findPod(podAddress)) { case Some(pod) =>
       for {
         _             <- ZIO.logInfo(s"Unregistering $podAddress")
         unassignments <- stateRef.modify { states =>
-                           val stateOpt = states.get(role)
+                           val stateOpt = states.get(pod.role)
                            (
                              stateOpt
                                .map(_.shards.collect { case (shard, Some(p)) if p == podAddress => shard }.toSet)
                                .getOrElse(Set.empty),
                              stateOpt.fold(states)(state =>
                                states.updated(
-                                 role,
+                                 pod.role,
                                  state.copy(
                                    pods = state.pods - podAddress,
                                    shards = state.shards.map { case (k, v) =>
@@ -99,18 +100,18 @@ class ShardManager(
                              )
                            )
                          }
-        _             <- ManagerMetrics.pods.tagged("role", role.name).decrement
+        _             <- ManagerMetrics.pods.tagged("role", pod.role.name).decrement
         _             <- ManagerMetrics.assignedShards
-                           .tagged("role", role.name)
+                           .tagged("role", pod.role.name)
                            .tagged("pod_address", podAddress.toString)
                            .decrementBy(unassignments.size)
-        _             <- ManagerMetrics.unassignedShards.tagged("role", role.name).incrementBy(unassignments.size)
+        _             <- ManagerMetrics.unassignedShards.tagged("role", pod.role.name).incrementBy(unassignments.size)
         _             <- eventsHub.publish(ShardingEvent.PodUnregistered(podAddress))
         _             <- eventsHub
-                           .publish(ShardingEvent.ShardsUnassigned(podAddress, role, unassignments))
+                           .publish(ShardingEvent.ShardsUnassigned(podAddress, pod.role, unassignments))
                            .when(unassignments.nonEmpty)
         _             <- persistPods.forkDaemon
-        _             <- rebalance(role, rebalanceImmediately = true).forkDaemon
+        _             <- rebalance(pod.role, rebalanceImmediately = true).forkDaemon
       } yield ()
     }
 
@@ -261,16 +262,15 @@ object ShardManager {
         podApi                <- ZIO.service[Pods]
         pods                  <- stateRepository.getPods
         // remove unhealthy pods on startup
-        failedFilteredPods    <-
-          ZIO.partitionPar(pods) { addrPod =>
-            ZIO.ifZIO(healthApi.isAlive(addrPod._1))(ZIO.succeed(addrPod), ZIO.fail(addrPod._2))
-          }
+        failedFilteredPods    <- ZIO.partitionPar(pods.values) { pod =>
+                                   ZIO.ifZIO(healthApi.isAlive(pod))(ZIO.succeed(pod), ZIO.fail(pod))
+                                 }
         (failedPods, filtered) = failedFilteredPods
         _                     <- ZIO.when(failedPods.nonEmpty)(
                                    ZIO.logInfo(s"Ignoring pods that are no longer alive ${failedPods.mkString("[", ", ", "]")}")
                                  )
-        filteredPods           = filtered.toMap
-        roles                  = filteredPods.map(_._2.role).toSet
+        filteredPods           = filtered.map(p => p.address -> p).toMap
+        roles                  = filtered.map(_.role).toSet
         _                     <- ZIO.when(filteredPods.nonEmpty)(ZIO.logInfo(s"Recovered pods ${filteredPods.mkString("[", ", ", "]")}"))
         rolePods               = filteredPods.groupBy { case (_, pod) => pod.role }.map { case (role, pods) => role -> pods.values }
         roleAssignments       <- ZIO

@@ -24,24 +24,24 @@ object K8sPodsHealth {
                     .make(
                       config.cacheSize,
                       config.cacheDuration,
-                      Lookup { (podAddress: PodAddress) =>
+                      Lookup { pod: Pod =>
                         pods
                           .getAll(
-                            config.namespace,
+                            config.namespace(pod.role),
                             1,
-                            Some(FieldSelector.FieldEquals(Chunk("status", "podIP"), podAddress.host)),
-                            config.labelSelector
+                            Some(FieldSelector.FieldEquals(Chunk("status", "podIP"), pod.address.host)),
+                            config.labelSelector(pod.role)
                           )
                           .runHead
                           .map(_.isDefined)
-                          .tap(ZIO.unless(_)(ZIO.logWarning(s"$podAddress is not found in k8s")))
+                          .tap(ZIO.unless(_)(ZIO.logWarning(s"${pod.address} is not found in k8s")))
                           .catchAllCause(cause =>
                             ZIO.logErrorCause(s"Error communicating with k8s", cause.map(asException)).as(true)
                           )
                       }
                     )
       } yield new PodsHealth {
-        def isAlive(podAddress: PodAddress): UIO[Boolean] = cache.get(podAddress)
+        def isAlive(pod: Pod): UIO[Boolean] = cache.get(pod)
       }
     }
 

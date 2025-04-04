@@ -6,6 +6,7 @@ import zio._
 
 /**
  * Sharding configuration
+ * @param role role of the current pod
  * @param numberOfShards number of shards (see documentation on how to choose this), should be same on all nodes
  * @param selfHost hostname or IP address of the current pod
  * @param shardingPort port used for pods to communicate together
@@ -17,9 +18,9 @@ import zio._
  * @param refreshAssignmentsRetryInterval retry interval in case of failure getting shard assignments from storage
  * @param unhealthyPodReportInterval interval to report unhealthy pods to the Shard Manager (this exists to prevent calling the Shard Manager for each failed message)
  * @param simulateRemotePods disable optimizations when sending a message to an entity hosted on the local shards (this will force serialization of all messages)
- * @param role role of the current pod
  */
 case class Config(
+  role: Role,
   numberOfShards: Int,
   selfHost: String,
   shardingPort: Int,
@@ -30,12 +31,12 @@ case class Config(
   sendTimeout: Duration,
   refreshAssignmentsRetryInterval: Duration,
   unhealthyPodReportInterval: Duration,
-  simulateRemotePods: Boolean,
-  role: Role
+  simulateRemotePods: Boolean
 )
 
 object Config {
   val default: Config = Config(
+    role = Role.default,
     numberOfShards = 300,
     selfHost = "localhost",
     shardingPort = 54321,
@@ -46,7 +47,6 @@ object Config {
     sendTimeout = 10 seconds,
     refreshAssignmentsRetryInterval = 5 seconds,
     unhealthyPodReportInterval = 5 seconds,
-    simulateRemotePods = false,
-    role = Role.default
+    simulateRemotePods = false
   )
 }
