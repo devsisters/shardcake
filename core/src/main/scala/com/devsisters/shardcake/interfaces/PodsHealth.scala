@@ -1,6 +1,6 @@
 package com.devsisters.shardcake.interfaces
 
-import com.devsisters.shardcake.{ Pod, PodAddress, Role }
+import com.devsisters.shardcake.Pod
 import zio.{ UIO, ULayer, ZIO, ZLayer }
 
 /**
