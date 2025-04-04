@@ -40,7 +40,7 @@ class ShardManager(
         cdt              <- ZIO.succeed(OffsetDateTime.now())
         triggerRebalance <- stateRef.modify { states =>
                               val previous =
-                                states.getOrElse(pod.role, ShardManagerState(config.getNumberOfShards(pod.role)))
+                                states.getOrElse(pod.role, ShardManagerState(config.numberOfShards(pod.role)))
                               val state    =
                                 previous.copy(pods = previous.pods.updated(pod.address, PodWithMetadata(pod, cdt)))
                               (state.unassignedShards.nonEmpty, states.updated(pod.role, state))
@@ -126,7 +126,7 @@ class ShardManager(
   private def rebalance(role: Role, rebalanceImmediately: Boolean): UIO[Unit] =
     getSemaphore(role).flatMap(_.withPermit {
       for {
-        state                                         <- stateRef.get.map(_.getOrElse(role, ShardManagerState(config.getNumberOfShards(role))))
+        state                                         <- stateRef.get.map(_.getOrElse(role, ShardManagerState(config.numberOfShards(role))))
         // find which shards to assign and unassign
         (assignments, unassignments)                   = if (rebalanceImmediately || state.unassignedShards.nonEmpty)
                                                            decideAssignmentsForUnassignedShards(state)
@@ -306,9 +306,9 @@ object ShardManager {
         initialStates          = rolePods.map { case (role, pods) =>
                                    role -> ShardManagerState(
                                      pods.map(pod => pod.address -> PodWithMetadata(pod, cdt)).toMap,
-                                     (1 to config.getNumberOfShards(role)).map(_ -> None).toMap ++
+                                     (1 to config.numberOfShards(role)).map(_ -> None).toMap ++
                                        roleAssignments.getOrElse(role, Map.empty),
-                                     config.getNumberOfShards(role)
+                                     config.numberOfShards(role)
                                    )
                                  }
         _                     <- ZIO

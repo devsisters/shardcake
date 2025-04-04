@@ -22,7 +22,7 @@ object ShardManagerSpec extends ZIOSpecDefault {
             ShardManagerState(
               pods = Map(pod1.pod.address -> pod1, pod2.pod.address -> pod2),
               shards = Map(1 -> Some(pod1.pod.address), 2 -> Some(pod1.pod.address)),
-              numberOfShards = ManagerConfig.default.numberOfShards
+              numberOfShards = ManagerConfig.default.numberOfShards(role)
             )
           val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state, 1d)
           assertTrue(
@@ -40,7 +40,7 @@ object ShardManagerSpec extends ZIOSpecDefault {
                 pod2.pod.address -> pod2.copy(pod = pod2.pod.copy(version = "0.1.2"))
               ), // older version
               shards = Map(1 -> Some(pod1.pod.address), 2 -> Some(pod1.pod.address)),
-              numberOfShards = ManagerConfig.default.numberOfShards
+              numberOfShards = ManagerConfig.default.numberOfShards(role)
             )
           val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state, 1d)
           assertTrue(assignments.isEmpty, unassignments.isEmpty)
@@ -50,7 +50,7 @@ object ShardManagerSpec extends ZIOSpecDefault {
             ShardManagerState(
               pods = Map(pod1.pod.address -> pod1, pod2.pod.address -> pod2),
               shards = Map(1 -> Some(pod1.pod.address), 2 -> Some(pod2.pod.address)),
-              numberOfShards = ManagerConfig.default.numberOfShards
+              numberOfShards = ManagerConfig.default.numberOfShards(role)
             )
           val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state, 1d)
           assertTrue(assignments.isEmpty, unassignments.isEmpty)
@@ -60,7 +60,7 @@ object ShardManagerSpec extends ZIOSpecDefault {
             ShardManagerState(
               pods = Map(pod1.pod.address -> pod1, pod2.pod.address -> pod2),
               shards = Map(1 -> Some(pod1.pod.address), 2 -> Some(pod1.pod.address), 3 -> Some(pod2.pod.address)),
-              numberOfShards = ManagerConfig.default.numberOfShards
+              numberOfShards = ManagerConfig.default.numberOfShards(role)
             )
           val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state, 1d)
           assertTrue(assignments.isEmpty, unassignments.isEmpty)
@@ -75,7 +75,7 @@ object ShardManagerSpec extends ZIOSpecDefault {
                 3 -> Some(pod1.pod.address),
                 4 -> Some(pod2.pod.address)
               ),
-              numberOfShards = ManagerConfig.default.numberOfShards
+              numberOfShards = ManagerConfig.default.numberOfShards(role)
             )
           val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state, 1d)
           assertTrue(
@@ -90,7 +90,7 @@ object ShardManagerSpec extends ZIOSpecDefault {
             ShardManagerState(
               pods = Map(pod1.pod.address -> pod1, pod2.pod.address -> pod2, pod3.pod.address -> pod3),
               shards = Map(1 -> Some(pod1.pod.address), 2 -> Some(pod1.pod.address), 3 -> Some(pod2.pod.address)),
-              numberOfShards = ManagerConfig.default.numberOfShards
+              numberOfShards = ManagerConfig.default.numberOfShards(role)
             )
           val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state, 1d)
           assertTrue(
@@ -105,7 +105,7 @@ object ShardManagerSpec extends ZIOSpecDefault {
             ShardManagerState(
               pods = Map(),
               shards = Map(1 -> Some(pod1.pod.address)),
-              numberOfShards = ManagerConfig.default.numberOfShards
+              numberOfShards = ManagerConfig.default.numberOfShards(role)
             )
           val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state, 1d)
           assertTrue(assignments.isEmpty, unassignments.isEmpty)
@@ -115,7 +115,7 @@ object ShardManagerSpec extends ZIOSpecDefault {
             ShardManagerState(
               pods = Map(),
               shards = (1 to 300).map(_ -> None).toMap,
-              numberOfShards = ManagerConfig.default.numberOfShards
+              numberOfShards = ManagerConfig.default.numberOfShards(role)
             )
 
           val result =

@@ -4,8 +4,7 @@ import zio._
 
 /**
  * Shard Manager configuration
- * @param numberOfShards number of shards (see documentation on how to choose this), should be same on all nodes
- * @param numberOfShardsPerRole overrides of the number of shards per role
+ * @param numberOfShards number of shards (see documentation on how to choose this), should be same on all pods
  * @param apiPort port to expose the GraphQL API
  * @param rebalanceInterval interval for regular rebalancing of shards
  * @param rebalanceRetryInterval retry interval for rebalancing when some shards failed to be rebalanced
@@ -16,8 +15,7 @@ import zio._
  * @param podHealthCheckInterval interval for checking pod health
  */
 case class ManagerConfig(
-  numberOfShards: Int,
-  numberOfShardsPerRole: Map[Role, Int],
+  numberOfShards: Role => Int,
   apiPort: Int,
   rebalanceInterval: Duration,
   rebalanceRetryInterval: Duration,
@@ -26,16 +24,12 @@ case class ManagerConfig(
   persistRetryCount: Int,
   rebalanceRate: Double,
   podHealthCheckInterval: Duration
-) {
-  def getNumberOfShards(role: Role): Int =
-    numberOfShardsPerRole.getOrElse(role, numberOfShards)
-}
+)
 
 object ManagerConfig {
   val default: ManagerConfig =
     ManagerConfig(
-      numberOfShards = 300,
-      numberOfShardsPerRole = Map.empty,
+      numberOfShards = _ => 300,
       apiPort = 8080,
       rebalanceInterval = 20 seconds,
       rebalanceRetryInterval = 10 seconds,
