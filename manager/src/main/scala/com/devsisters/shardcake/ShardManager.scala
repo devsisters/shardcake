@@ -46,7 +46,7 @@ class ShardManager(
                               (state.unassignedShards.nonEmpty, states.updated(pod.role, state))
                             }
         _                <- ManagerMetrics.pods.tagged("role", pod.role.name).increment
-        _                <- eventsHub.publish(ShardingEvent.PodRegistered(pod.address, pod.role))
+        _                <- eventsHub.publish(ShardingEvent.PodRegistered(pod))
         _                <- ZIO.whenDiscard(triggerRebalance)(rebalance(pod.role, rebalanceImmediately = false).forkDaemon)
         _                <- persistPods.forkDaemon
       } yield (),
@@ -65,7 +65,7 @@ class ShardManager(
     ZIO
       .whenCaseZIODiscard(findPod(podAddress)) { case Some(pod) =>
         ManagerMetrics.podHealthChecked.tagged("pod_address", podAddress.toString).increment.unless(ignoreMetric) *>
-          eventsHub.publish(ShardingEvent.PodHealthChecked(podAddress)) *>
+          eventsHub.publish(ShardingEvent.PodHealthChecked(pod)) *>
           ZIO.unlessZIO(healthApi.isAlive(pod))(
             ZIO.logWarning(s"Pod $podAddress is not alive, unregistering") *> unregister(podAddress)
           )
@@ -106,9 +106,9 @@ class ShardManager(
                            .tagged("pod_address", podAddress.toString)
                            .decrementBy(unassignments.size)
         _             <- ManagerMetrics.unassignedShards.tagged("role", pod.role.name).incrementBy(unassignments.size)
-        _             <- eventsHub.publish(ShardingEvent.PodUnregistered(podAddress))
+        _             <- eventsHub.publish(ShardingEvent.PodUnregistered(pod))
         _             <- eventsHub
-                           .publish(ShardingEvent.ShardsUnassigned(podAddress, pod.role, unassignments))
+                           .publish(ShardingEvent.ShardsUnassigned(pod.address, pod.role, unassignments))
                            .when(unassignments.nonEmpty)
         _             <- persistPods.forkDaemon
         _             <- rebalance(pod.role, rebalanceImmediately = true).forkDaemon
@@ -136,34 +136,38 @@ class ShardManager(
                                                            ManagerMetrics.rebalances.tagged("role", role.name).increment).when(areChanges)
         // ping pods first to make sure they are ready and remove those who aren't
         failedPingedPods                              <- ZIO
-                                                           .foreachPar(assignments.keySet ++ unassignments.keySet)(pod =>
+                                                           .foreachPar(assignments.keySet ++ unassignments.keySet)(podAddress =>
                                                              podApi
-                                                               .ping(pod)
+                                                               .ping(podAddress)
                                                                .timeout(config.pingTimeout)
                                                                .someOrFailException
-                                                               .fold(_ => Set(pod), _ => Set.empty[PodAddress])
+                                                               .fold(_ => Set(podAddress), _ => Set.empty[PodAddress])
                                                            )
                                                            .map(_.flatten)
-        shardsToRemove                                 =
-          assignments.collect { case (pod, shards) if failedPingedPods.contains(pod) => shards }.toSet.flatten ++
-            unassignments.collect { case (pod, shards) if failedPingedPods.contains(pod) => shards }.toSet.flatten
+        shardsToRemove                                 = assignments.collect {
+                                                           case (podAddress, shards) if failedPingedPods.contains(podAddress) => shards
+                                                         }.toSet.flatten ++
+                                                           unassignments.collect {
+                                                             case (podAddress, shards) if failedPingedPods.contains(podAddress) => shards
+                                                           }.toSet.flatten
         readyAssignments                               = assignments.view.mapValues(_ diff shardsToRemove).filterNot(_._2.isEmpty).toMap
         readyUnassignments                             = unassignments.view.mapValues(_ diff shardsToRemove).filterNot(_._2.isEmpty).toMap
         // do the unassignments first
         failed                                        <- ZIO
-                                                           .foreachPar(readyUnassignments.toList) { case (pod, shards) =>
-                                                             (podApi.unassignShards(pod, shards) *> updateShardsState(role, shards, None)).foldZIO(
-                                                               _ => ZIO.succeed((Set(pod), shards)),
+                                                           .foreachPar(readyUnassignments.toList) { case (podAddress, shards) =>
+                                                             (podApi.unassignShards(podAddress, shards) *>
+                                                               updateShardsState(role, shards, None)).foldZIO(
+                                                               _ => ZIO.succeed((Set(podAddress), shards)),
                                                                _ =>
                                                                  ManagerMetrics.assignedShards
                                                                    .tagged("role", role.name)
-                                                                   .tagged("pod_address", pod.toString)
+                                                                   .tagged("pod_address", podAddress.toString)
                                                                    .decrementBy(shards.size) *>
                                                                    ManagerMetrics.unassignedShards
                                                                      .tagged("role", role.name)
                                                                      .incrementBy(shards.size) *>
                                                                    eventsHub
-                                                                     .publish(ShardingEvent.ShardsUnassigned(pod, role, shards))
+                                                                     .publish(ShardingEvent.ShardsUnassigned(podAddress, role, shards))
                                                                      .as((Set.empty, Set.empty))
                                                              )
                                                            }
@@ -171,25 +175,26 @@ class ShardManager(
                                                            .map { case (pods, shards) => (pods.flatten[PodAddress].toSet, shards.flatten[ShardId].toSet) }
         (failedUnassignedPods, failedUnassignedShards) = failed
         // remove assignments of shards that couldn't be unassigned, as well as faulty pods
-        filteredAssignments                            = (readyAssignments -- failedUnassignedPods).map { case (pod, shards) =>
-                                                           pod -> (shards diff failedUnassignedShards)
+        filteredAssignments                            = (readyAssignments -- failedUnassignedPods).map { case (podAddress, shards) =>
+                                                           podAddress -> (shards diff failedUnassignedShards)
                                                          }
         // then do the assignments
         failedAssignedPods                            <- ZIO
-                                                           .foreachPar(filteredAssignments.toList) { case (pod, shards) =>
-                                                             (podApi.assignShards(pod, shards) *> updateShardsState(role, shards, Some(pod)))
+                                                           .foreachPar(filteredAssignments.toList) { case (podAddress, shards) =>
+                                                             (podApi.assignShards(podAddress, shards) *>
+                                                               updateShardsState(role, shards, Some(podAddress)))
                                                                .foldZIO(
-                                                                 _ => ZIO.succeed(Set(pod)),
+                                                                 _ => ZIO.succeed(Set(podAddress)),
                                                                  _ =>
                                                                    ManagerMetrics.assignedShards
                                                                      .tagged("role", role.name)
-                                                                     .tagged("pod_address", pod.toString)
+                                                                     .tagged("pod_address", podAddress.toString)
                                                                      .incrementBy(shards.size) *>
                                                                      ManagerMetrics.unassignedShards
                                                                        .tagged("role", role.name)
                                                                        .decrementBy(shards.size) *>
                                                                      eventsHub
-                                                                       .publish(ShardingEvent.ShardsAssigned(pod, role, shards))
+                                                                       .publish(ShardingEvent.ShardsAssigned(podAddress, role, shards))
                                                                        .as(Set.empty)
                                                                )
                                                            }
@@ -228,19 +233,20 @@ class ShardManager(
       )
     )
 
-  private def updateShardsState(role: Role, shards: Set[ShardId], pod: Option[PodAddress]): Task[Unit] =
+  private def updateShardsState(role: Role, shards: Set[ShardId], podAddress: Option[PodAddress]): Task[Unit] =
     stateRef.updateZIO { states =>
       val previous = states.get(role)
       ZIO
-        .whenCase((previous, pod)) {
-          case (Some(p), Some(pod)) if !p.pods.contains(pod) => ZIO.fail(new Exception(s"Pod $pod is not registered"))
+        .whenCase((previous, podAddress)) {
+          case (Some(state), Some(podAddress)) if !state.pods.contains(podAddress) =>
+            ZIO.fail(new Exception(s"Pod $podAddress is not registered"))
         }
         .as(
           previous.fold(states)(state =>
             states.updated(
               role,
               state.copy(shards = state.shards.map { case (shard, assignment) =>
-                shard -> (if (shards.contains(shard)) pod else assignment)
+                shard -> (if (shards.contains(shard)) podAddress else assignment)
               })
             )
           )
@@ -422,15 +428,17 @@ object ShardManager {
 
   sealed trait ShardingEvent
   object ShardingEvent {
-    case class ShardsAssigned(pod: PodAddress, role: Role, shards: Set[ShardId])   extends ShardingEvent {
-      override def toString: String = s"ShardsAssigned(pod=$pod, role=${role.name}, shards=${renderShardIds(shards)})"
+    case class ShardsAssigned(podAddress: PodAddress, role: Role, shards: Set[ShardId])   extends ShardingEvent {
+      override def toString: String =
+        s"ShardsAssigned(pod=$podAddress, role=${role.name}, shards=${renderShardIds(shards)})"
     }
-    case class ShardsUnassigned(pod: PodAddress, role: Role, shards: Set[ShardId]) extends ShardingEvent {
-      override def toString: String = s"ShardsUnassigned(pod=$pod, role=${role.name}, shards=${renderShardIds(shards)})"
+    case class ShardsUnassigned(podAddress: PodAddress, role: Role, shards: Set[ShardId]) extends ShardingEvent {
+      override def toString: String =
+        s"ShardsUnassigned(pod=$podAddress, role=${role.name}, shards=${renderShardIds(shards)})"
     }
-    case class PodRegistered(pod: PodAddress, role: Role)                          extends ShardingEvent
-    case class PodUnregistered(pod: PodAddress)                                    extends ShardingEvent
-    case class PodHealthChecked(pod: PodAddress)                                   extends ShardingEvent
+    case class PodRegistered(pod: Pod)                                                    extends ShardingEvent
+    case class PodUnregistered(pod: Pod)                                                  extends ShardingEvent
+    case class PodHealthChecked(pod: Pod)                                                 extends ShardingEvent
   }
 
   def decideAssignmentsForUnassignedShards(
@@ -452,10 +460,10 @@ object ShardManager {
       } else Set.empty
     val sortedShardsToRebalance = extraShardsToAllocate.toList.sortBy { shard =>
       // handle unassigned shards first, then shards on the pods with most shards, then shards on old pods
-      state.shards.get(shard).flatten.fold((Int.MinValue, OffsetDateTime.MIN)) { pod =>
+      state.shards.get(shard).flatten.fold((Int.MinValue, OffsetDateTime.MIN)) { podAddress =>
         (
-          state.shardsPerPod.get(pod).fold(Int.MinValue)(-_.size),
-          state.pods.get(pod).fold(OffsetDateTime.MIN)(_.registered)
+          state.shardsPerPod.get(podAddress).fold(Int.MinValue)(-_.size),
+          state.pods.get(podAddress).fold(OffsetDateTime.MIN)(_.registered)
         )
       }
     }
@@ -476,34 +484,38 @@ object ShardManager {
         // find pod with least amount of shards
         shardsPerPod
           // keep only pods with the max version
-          .filter { case (pod, _) =>
-            state.maxVersion.forall(max => state.pods.get(pod).map(extractVersion).forall(_ == max))
+          .filter { case (podAddress, _) =>
+            state.maxVersion.forall(max => state.pods.get(podAddress).map(extractVersion).forall(_ == max))
           }
           // don't assign too many shards to the same pods, unless we need rebalance immediately
-          .filter { case (pod, _) =>
-            rebalanceImmediately || assignments.count { case (_, p) => p == pod } < state.shards.size * rebalanceRate
+          .filter { case (podAddress, _) =>
+            rebalanceImmediately ||
+              assignments.count { case (_, p) => p == podAddress } < state.shards.size * rebalanceRate
           }
           // don't assign to a pod that was unassigned in the same rebalance
-          .filterNot { case (pod, _) => unassignedPods.contains(pod) }
+          .filterNot { case (podAddress, _) => unassignedPods.contains(podAddress) }
           .minByOption(_._2.size) match {
-          case Some((pod, shards)) =>
-            val oldPod = state.shards.get(shard).flatten
+          case Some((podAddress, shards)) =>
+            val oldPodAddress = state.shards.get(shard).flatten
             // if old pod is same as new pod, don't change anything
-            if (oldPod.contains(pod))
+            if (oldPodAddress.contains(podAddress))
               (shardsPerPod, assignments)
             // if the new pod has more, as much, or only 1 less shard than the old pod, don't change anything
             else if (
-              shardsPerPod.get(pod).fold(0)(_.size) + 1 >= oldPod.fold(Int.MaxValue)(
+              shardsPerPod.get(podAddress).fold(0)(_.size) + 1 >= oldPodAddress.fold(Int.MaxValue)(
                 shardsPerPod.getOrElse(_, Nil).size
               )
             )
               (shardsPerPod, assignments)
             // otherwise, create a new assignment
             else {
-              val unassigned = oldPod.fold(shardsPerPod)(oldPod => shardsPerPod.updatedWith(oldPod)(_.map(_ - shard)))
-              (unassigned.updated(pod, shards + shard), (shard, pod) :: assignments)
+              val unassigned =
+                oldPodAddress.fold(shardsPerPod)(oldPodAddress =>
+                  shardsPerPod.updatedWith(oldPodAddress)(_.map(_ - shard))
+                )
+              (unassigned.updated(podAddress, shards + shard), (shard, podAddress) :: assignments)
             }
-          case None                => (shardsPerPod, assignments)
+          case None                       => (shardsPerPod, assignments)
         }
     }
     val unassignments       = assignments.flatMap { case (shard, _) => state.shards.get(shard).flatten.map(shard -> _) }
