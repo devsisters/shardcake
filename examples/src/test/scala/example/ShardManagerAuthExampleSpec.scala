@@ -10,7 +10,7 @@ import zio.http.{ Header, Middleware }
 import zio.test._
 import zio.{ Config => _, _ }
 
-object ShardManagerAuthSpec extends ZIOSpecDefault {
+object ShardManagerAuthExampleSpec extends ZIOSpecDefault {
 
   val validToken = "validBearerToken"
 
@@ -37,24 +37,24 @@ object ShardManagerAuthSpec extends ZIOSpecDefault {
 
   def spec: Spec[TestEnvironment, Any] =
     suite("ShardManagerAuthSpec")(
-      test("auth example token validation") {
+      test("auth example for shard manager") {
         ZIO.scoped {
           for {
-            validClient     <- ZIO
-                                 .service[ShardManagerClient]
-                                 .provideSome[Config & Scope](
-                                   sttpBackendWithAuthTokenLayer(validToken),
-                                   ShardManagerClient.live
-                                 )
-            invalidClient   <- ZIO
-                                 .service[ShardManagerClient]
-                                 .provideSome[Config & Scope](
-                                   sttpBackendWithAuthTokenLayer("invalid"),
-                                   ShardManagerClient.live
-                                 )
-            validResponse   <- validClient.getAssignments.exit
-            invalidResponse <- invalidClient.getAssignments.exit
-          } yield assertTrue(validResponse.isSuccess) && assertTrue(invalidResponse.isFailure)
+            validClient    <- ZIO
+                                .service[ShardManagerClient]
+                                .provideSome[Config & Scope](
+                                  sttpBackendWithAuthTokenLayer(validToken),
+                                  ShardManagerClient.live
+                                )
+            invalidClient  <- ZIO
+                                .service[ShardManagerClient]
+                                .provideSome[Config & Scope](
+                                  sttpBackendWithAuthTokenLayer("invalid"),
+                                  ShardManagerClient.live
+                                )
+            validRequest   <- validClient.getAssignments.exit
+            invalidRequest <- invalidClient.getAssignments.exit
+          } yield assertTrue(validRequest.isSuccess, invalidRequest.isFailure)
         }
       }
     ).provide(

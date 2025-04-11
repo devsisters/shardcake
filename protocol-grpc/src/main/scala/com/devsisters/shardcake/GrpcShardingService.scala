@@ -84,37 +84,38 @@ object GrpcShardingService {
   val live: ZLayer[Config with Sharding with GrpcConfig, Throwable, Unit] =
     ZLayer.scoped[Config with Sharding with GrpcConfig] {
       for {
-        config        <- ZIO.service[Config]
-        grpcConfig    <- ZIO.service[GrpcConfig]
-        sharding      <- ZIO.service[Sharding]
-        builder        = grpcConfig.executor match {
-                           case Some(executor) =>
-                             ServerBuilder
-                               .forPort(config.shardingPort)
-                               .executor(executor)
-                           case None           =>
-                             ServerBuilder.forPort(config.shardingPort)
-                         }
-        services      <-
+        config             <- ZIO.service[Config]
+        grpcConfig         <- ZIO.service[GrpcConfig]
+        sharding           <- ZIO.service[Sharding]
+        builder             = grpcConfig.executor match {
+                                case Some(executor) =>
+                                  ServerBuilder
+                                    .forPort(config.shardingPort)
+                                    .executor(executor)
+                                case None           =>
+                                  ServerBuilder.forPort(config.shardingPort)
+                              }
+        grpcShardingService = new GrpcShardingService(sharding, config.sendTimeout) {}
+        services           <-
           ServiceList
             .add(
               grpcConfig.serverInterceptors
-                .foldLeft(new GrpcShardingService(sharding, config.sendTimeout) {}.asGeneric) {
-                  case (service, interceptor) => service.transform(interceptor)
-                }
+                .reduceOption(_.andThen(_))
+                .map(t => grpcShardingService.transform(t))
+                .getOrElse(grpcShardingService.asGeneric)
             )
             .bindAll
-        server: Server = services
-                           .foldLeft(builder) { case (builder0, service) => builder0.addService(service) }
-                           .addService(ProtoReflectionService.newInstance())
-                           .build()
-        _             <- ZIO.acquireRelease(ZIO.attempt(server.start()))(server =>
-                           ZIO.attemptBlocking {
-                             server.shutdown()
-                             server.awaitTermination(grpcConfig.shutdownTimeout.toMillis, TimeUnit.MILLISECONDS)
-                             server.shutdownNow()
-                           }.ignore
-                         )
+        server: Server      = services
+                                .foldLeft(builder) { case (builder0, service) => builder0.addService(service) }
+                                .addService(ProtoReflectionService.newInstance())
+                                .build()
+        _                  <- ZIO.acquireRelease(ZIO.attempt(server.start()))(server =>
+                                ZIO.attemptBlocking {
+                                  server.shutdown()
+                                  server.awaitTermination(grpcConfig.shutdownTimeout.toMillis, TimeUnit.MILLISECONDS)
+                                  server.shutdownNow()
+                                }.ignore
+                              )
       } yield ()
     }
 }

@@ -21,7 +21,7 @@ case class GrpcConfig(
   executor: Option[Executor],
   shutdownTimeout: Duration,
   clientInterceptors: Seq[ZClientInterceptor],
-  serverInterceptors: Seq[ZTransform[RequestContext, Any]]
+  serverInterceptors: Seq[ZTransform[RequestContext, RequestContext]]
 )
 
 object GrpcConfig {
