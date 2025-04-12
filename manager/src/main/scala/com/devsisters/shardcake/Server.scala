@@ -10,15 +10,17 @@ object Server {
   /**
    * Start an HTTP server that exposes the Shard Manager GraphQL API
    */
-  val run: RIO[ShardManager with ManagerConfig, Nothing] =
+  def run(
+    httpHandler: HandlerAspect[Any, Unit] = HandlerAspect.identity
+  ): RIO[ShardManager with ManagerConfig, Nothing] =
     for {
       config      <- ZIO.service[ManagerConfig]
       interpreter <- (GraphQLApi.api @@ printErrors).interpreter
       handlers     = QuickAdapter(interpreter).handlers
       routes       = Routes(
                        Method.ANY / "health"          -> Handler.ok,
-                       Method.ANY / "api" / "graphql" -> handlers.api,
-                       Method.ANY / "ws" / "graphql"  -> handlers.webSocket
+                       Method.ANY / "api" / "graphql" -> handlers.api @@ httpHandler,
+                       Method.ANY / "ws" / "graphql"  -> handlers.webSocket @@ httpHandler
                      ) @@ Middleware.cors
       _           <- ZIO.logInfo(s"Shard Manager server started on port ${config.apiPort}.")
       nothing     <- ZServer

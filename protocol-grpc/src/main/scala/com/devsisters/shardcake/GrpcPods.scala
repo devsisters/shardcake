@@ -41,7 +41,7 @@ class GrpcPods(
                 }
               }
 
-              val channel = ZManagedChannel(builder, config.interceptors)
+              val channel = ZManagedChannel(builder, config.clientInterceptors)
               // create a fiber that never ends and keeps the connection alive
               for {
                 _          <- ZIO.logDebug(s"Opening connection to pod $pod")
