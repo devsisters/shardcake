@@ -1,6 +1,6 @@
 package example
 
-import com.devsisters.shardcake.{ Config, ManagerConfig, Server, ShardManager, ShardManagerClient }
+import com.devsisters.shardcake.{ Config, ManagerConfig, Role, Server, ShardManager, ShardManagerClient }
 import com.devsisters.shardcake.interfaces.{ Pods, PodsHealth, Storage }
 import sttp.client3.SttpBackend
 import sttp.client3.asynchttpclient.zio.AsyncHttpClientZioBackend
@@ -52,8 +52,8 @@ object ShardManagerAuthExampleSpec extends ZIOSpecDefault {
                                   sttpBackendWithAuthTokenLayer("invalid"),
                                   ShardManagerClient.live
                                 )
-            validRequest   <- validClient.getAssignments.exit
-            invalidRequest <- invalidClient.getAssignments.exit
+            validRequest   <- validClient.getAssignments(Role.default).exit
+            invalidRequest <- invalidClient.getAssignments(Role.default).exit
           } yield assertTrue(validRequest.isSuccess, invalidRequest.isFailure)
         }
       }
