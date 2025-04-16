@@ -25,7 +25,7 @@ import scala.util.Try
 object EndToEndSpec extends ZIOSpecDefault {
 
   val shardManagerServer: ZLayer[ShardManager with ManagerConfig, Throwable, Unit] =
-    ZLayer(Server.run.forkDaemon *> ClockLive.sleep(3 seconds).unit)
+    ZLayer(Server.run().forkDaemon *> ClockLive.sleep(3 seconds).unit)
 
   val container: ZLayer[Any, Nothing, GenericContainer] =
     ZLayer.scoped {

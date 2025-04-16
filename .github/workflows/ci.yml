@@ -10,23 +10,23 @@ on:
 
 jobs:
   lint:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
     steps:
       - name: Checkout current branch
-        uses: actions/checkout@v2.3.4
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Setup Scala and Java
         uses: olafurpg/setup-scala@v10
       - name: Cache scala dependencies
-        uses: coursier/cache-action@v5
+        uses: coursier/cache-action@v6
       - name: Lint code
         run: sbt check
 
   test:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -34,7 +34,7 @@ jobs:
         scala: ['2.12.20', '2.13.16', '3.3.5']
     steps:
       - name: Checkout current branch
-        uses: actions/checkout@v2.3.4
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Setup Scala and Java
@@ -42,17 +42,17 @@ jobs:
         with:
           java-version: ${{ matrix.java }}
       - name: Cache scala dependencies
-        uses: coursier/cache-action@v5
+        uses: coursier/cache-action@v6
       - name: Run tests
         run: sbt ++${{ matrix.scala }}! test
         
   publish:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     needs: [lint, test]
     if: github.event_name != 'pull_request'
     steps:
       - name: Checkout current branch
-        uses: actions/checkout@v2.3.4
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Setup Scala and Java
@@ -60,7 +60,7 @@ jobs:
         with:
           java-version: adopt@1.11
       - name: Cache scala dependencies
-        uses: coursier/cache-action@v5
+        uses: coursier/cache-action@v6
       - name: Release artifacts
         run: sbt ci-release
         env:

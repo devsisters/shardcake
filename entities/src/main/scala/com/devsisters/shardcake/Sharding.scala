@@ -40,24 +40,22 @@ class Sharding private (
       shardManager.register(address, config.role)
 
   val unregister: UIO[Unit] =
-    // ping the shard manager first to stop if it's not available
-    shardManager
-      .getAssignments(config.role)
-      .foldCauseZIO(
-        ZIO.logWarningCause("Shard Manager not available. Can't unregister cleanly", _),
-        _ =>
-          ZIO.logDebug(s"Stopping local entities") *>
-            isShuttingDownRef.set(true) *>
-            entityStates.get.flatMap(
-              ZIO.foreachParDiscard(_) { case (name, entity) =>
-                entity.entityManager.terminateAllEntities.forkDaemon // run in a daemon fiber to make sure it doesn't get interrupted
-                  .flatMap(_.join)
-                  .catchAllCause(ZIO.logErrorCause(s"Error during stop of entity $name", _))
-              }
-            ) *>
-            ZIO.logDebug(s"Unregistering pod $address to Shard Manager") *>
-            shardManager.unregister(address).catchAllCause(ZIO.logErrorCause("Error during unregister", _))
-      )
+    (
+      // ping the shard manager first to stop if it's not available
+      shardManager.getAssignments(config.role) *>
+        ZIO.logDebug(s"Stopping local entities") *>
+        isShuttingDownRef.set(true) *>
+        entityStates.get.flatMap(
+          ZIO.foreachParDiscard(_) { case (name, entity) =>
+            entity.entityManager.terminateAllEntities.forkDaemon // run in a daemon fiber to make sure it doesn't get interrupted
+              .flatMap(_.join)
+              .catchAllCause(ZIO.logErrorCause(s"Error during stop of entity $name", _))
+          }
+        ) *>
+        ZIO.logDebug(s"Unregistering pod $address to Shard Manager") *>
+        shardManager.unregister(address)
+    ).retry(config.unregisterRetrySchedule)
+      .catchAllCause(ZIO.logWarningCause("Error while unregistering from Shard Manager", _))
 
   val isSingletonNode: UIO[Boolean] =
     // Start singletons on the pod hosting shard 1.
