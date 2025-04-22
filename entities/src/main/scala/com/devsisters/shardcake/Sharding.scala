@@ -11,6 +11,7 @@ import zio.stream.ZStream
 
 import java.time.OffsetDateTime
 import scala.util.Try
+import com.devsisters.shardcake.errors.InvalidShardId
 
 /**
  * A component that takes care of communicating with sharded entities.
@@ -406,7 +407,8 @@ class Sharding private (
                       }
           } yield ()
 
-        trySend
+        if (shardId > 0 && shardId <= config.numberOfShards) trySend
+        else ZIO.fail(InvalidShardId(shardId))
       }
 
       private def sendStreamGeneric[Res](
@@ -438,7 +440,8 @@ class Sharding private (
                       }
           } yield ()
 
-        trySend
+        if (shardId > 0 && shardId <= config.numberOfShards) trySend
+        else ZIO.fail(InvalidShardId(shardId))
       }
     }
 
