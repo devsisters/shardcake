@@ -407,7 +407,7 @@ class Sharding private (
           } yield ()
 
         if (shardId > 0 && shardId <= config.numberOfShards) trySend
-        else ZIO.fail(InvalidShardId(shardId))
+        else ZIO.fail(InvalidShardId(entityId, shardId))
       }
 
       private def sendStreamGeneric[Res](
@@ -440,7 +440,7 @@ class Sharding private (
           } yield ()
 
         if (shardId > 0 && shardId <= config.numberOfShards) trySend
-        else ZIO.fail(InvalidShardId(shardId))
+        else ZIO.fail(InvalidShardId(entityId, shardId))
       }
     }
 
