@@ -2,7 +2,7 @@ package com.devsisters.shardcake
 
 import com.devsisters.shardcake.Messenger.MessengerTimeout
 import com.devsisters.shardcake.Sharding.{ EntityState, ShardingRegistrationEvent }
-import com.devsisters.shardcake.errors.{ EntityNotManagedByThisPod, PodUnavailable, SendTimeoutException }
+import com.devsisters.shardcake.errors._
 import com.devsisters.shardcake.interfaces.Pods.BinaryMessage
 import com.devsisters.shardcake.interfaces.{ Pods, Serialization, Storage }
 import com.devsisters.shardcake.internal.{ EntityManager, ReplyChannel, SendChannel }
@@ -11,7 +11,6 @@ import zio.stream.ZStream
 
 import java.time.OffsetDateTime
 import scala.util.Try
-import com.devsisters.shardcake.errors.InvalidShardId
 
 /**
  * A component that takes care of communicating with sharded entities.
