@@ -2,7 +2,7 @@ package com.devsisters.shardcake
 
 import com.devsisters.shardcake.Messenger.MessengerTimeout
 import com.devsisters.shardcake.Sharding.{ EntityState, ShardingRegistrationEvent }
-import com.devsisters.shardcake.errors.{ EntityNotManagedByThisPod, PodUnavailable, SendTimeoutException }
+import com.devsisters.shardcake.errors._
 import com.devsisters.shardcake.interfaces.Pods.BinaryMessage
 import com.devsisters.shardcake.interfaces.{ Pods, Serialization, Storage }
 import com.devsisters.shardcake.internal.{ EntityManager, ReplyChannel, SendChannel }
@@ -406,7 +406,8 @@ class Sharding private (
                       }
           } yield ()
 
-        trySend
+        if (shardId >= 1 && shardId <= config.numberOfShards) trySend
+        else ZIO.fail(InvalidShardId(entityId, shardId))
       }
 
       private def sendStreamGeneric[Res](
@@ -438,7 +439,8 @@ class Sharding private (
                       }
           } yield ()
 
-        trySend
+        if (shardId >= 1 && shardId <= config.numberOfShards) trySend
+        else ZIO.fail(InvalidShardId(entityId, shardId))
       }
     }
 
