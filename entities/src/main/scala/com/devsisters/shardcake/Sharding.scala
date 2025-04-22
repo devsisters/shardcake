@@ -406,7 +406,7 @@ class Sharding private (
                       }
           } yield ()
 
-        if (shardId > 0 && shardId <= config.numberOfShards) trySend
+        if (shardId >= 1 && shardId <= config.numberOfShards) trySend
         else ZIO.fail(InvalidShardId(entityId, shardId))
       }
 
@@ -439,7 +439,7 @@ class Sharding private (
                       }
           } yield ()
 
-        if (shardId > 0 && shardId <= config.numberOfShards) trySend
+        if (shardId >= 1 && shardId <= config.numberOfShards) trySend
         else ZIO.fail(InvalidShardId(entityId, shardId))
       }
     }
