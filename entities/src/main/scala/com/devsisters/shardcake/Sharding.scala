@@ -47,7 +47,7 @@ class Sharding private (
         isShuttingDownRef.set(true) *>
         entityStates.get.flatMap(
           ZIO.foreachParDiscard(_) { case (name, entity) =>
-            entity.entityManager.terminateAllEntities.forkDaemon // run in a daemon fiber to make sure it doesn't get interrupted
+            entity.entityManager.terminateAllEntities.interruptible.forkDaemon // run in a daemon fiber to make sure it doesn't get interrupted
               .flatMap(_.join)
               .catchAllCause(ZIO.logErrorCause(s"Error during stop of entity $name", _))
           }
