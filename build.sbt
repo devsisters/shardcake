@@ -201,7 +201,6 @@ lazy val protobuf = Seq(
 ) ++ Project.inConfig(Test)(sbtprotoc.ProtocPlugin.protobufConfigSettings)
 
 lazy val commonSettings = Def.settings(
-  resolvers ++= Resolver.sonatypeOssRepos("snapshots"),
   testFrameworks := Seq(new TestFramework("zio.test.sbt.ZTestFramework")),
   libraryDependencies ++=
     Seq(
