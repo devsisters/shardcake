@@ -120,12 +120,15 @@ class Sharding private (
       stopSingletonsIfNeeded *>
       ZIO.logDebug(s"Unassigned shards: ${renderShardIds(shards)}")
 
-  private[shardcake] def isEntityOnLocalShards(recipientType: RecipientType[_], entityId: String): UIO[Boolean] =
+  def getPodAddress(recipientType: RecipientType[_], entityId: String): UIO[Option[PodAddress]] =
     for {
       shards <- shardAssignments.get
       shardId = getShardId(recipientType, entityId)
       pod     = shards.get(shardId)
-    } yield pod.contains(address)
+    } yield pod
+
+  def isEntityOnLocalShards(recipientType: RecipientType[_], entityId: String): UIO[Boolean] =
+    getPodAddress(recipientType, entityId).map(pod => pod.contains(address))
 
   val getAssignments: UIO[Map[ShardId, PodAddress]] =
     shardAssignments.get
