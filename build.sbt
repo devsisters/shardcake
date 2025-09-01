@@ -13,7 +13,7 @@ val sttpVersion           = "3.10.3"
 val calibanVersion        = "2.10.0"
 val redis4catsVersion     = "2.0.1"
 val redissonVersion       = "3.45.1"
-val scalaKryoVersion      = "1.2.1"
+val scalaKryoVersion      = "1.3.0"
 val testContainersVersion = "0.43.0"
 val scalaCompatVersion    = "2.13.0"
 
