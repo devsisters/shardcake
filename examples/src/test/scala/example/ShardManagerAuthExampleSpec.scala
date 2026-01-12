@@ -2,13 +2,13 @@ package example
 
 import com.devsisters.shardcake.{ Config, ManagerConfig, Server, ShardManager, ShardManagerClient }
 import com.devsisters.shardcake.interfaces.{ Pods, PodsHealth, Storage }
-import sttp.client3.SttpBackend
-import sttp.client3.asynchttpclient.zio.AsyncHttpClientZioBackend
-import sttp.client3.httpclient.zio.ZioWebSocketsStreams
+import sttp.client4.Backend
+import sttp.client4.httpclient.zio._
 import zio.Clock.ClockLive
 import zio.http.{ Header, Middleware }
 import zio.test._
 import zio.{ Config => _, _ }
+import java.net.http.HttpRequest
 
 object ShardManagerAuthExampleSpec extends ZIOSpecDefault {
 
@@ -27,12 +27,17 @@ object ShardManagerAuthExampleSpec extends ZIOSpecDefault {
       PodsHealth.noop
     )
 
-  def sttpBackendWithAuthTokenLayer(token: String): ZLayer[Scope, Throwable, SttpBackend[Task, ZioWebSocketsStreams]] =
+  def sttpBackendWithAuthTokenLayer(token: String): ZLayer[Scope, Throwable, Backend[Task]] =
     ZLayer {
       val authHeader = Header.Authorization.Bearer(token)
-      AsyncHttpClientZioBackend.scoped(customizeRequest =
-        builder => builder.addHeader(authHeader.headerName, authHeader.renderedValue)
-      )
+      HttpClientZioBackend.scoped(customizeRequest = req => {
+        val builder =
+          HttpRequest
+            .newBuilder(req.uri())
+            .method(req.method(), req.bodyPublisher().orElse(HttpRequest.BodyPublishers.noBody()))
+        req.headers().map().forEach((k, vs) => vs.forEach(v => builder.header(k, v)))
+        builder.header(authHeader.headerName, authHeader.renderedValue).build()
+      })
     }
 
   def spec: Spec[TestEnvironment, Any] =
