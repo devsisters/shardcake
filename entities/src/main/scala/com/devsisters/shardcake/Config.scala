@@ -1,6 +1,6 @@
 package com.devsisters.shardcake
 
-import sttp.client3.UriContext
+import sttp.client4.UriContext
 import sttp.model.Uri
 import zio._
 

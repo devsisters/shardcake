@@ -1,6 +1,6 @@
-val scala212 = "2.12.20"
-val scala213 = "2.13.16"
-val scala3   = "3.3.5"
+val scala212 = "2.12.21"
+val scala213 = "2.13.18"
+val scala3   = "3.3.7"
 val allScala = Seq(scala212, scala213, scala3)
 
 val zioVersion            = "2.1.16"
@@ -9,12 +9,12 @@ val grpcNettyVersion      = "1.71.0"
 val zioK8sVersion         = "3.1.0"
 val zioCacheVersion       = "0.2.4"
 val zioCatsInteropVersion = "23.1.0.5"
-val sttpVersion           = "3.10.3"
-val calibanVersion        = "2.10.0"
+val sttpVersion           = "4.0.13"
+val calibanVersion        = "3.0.0"
 val redis4catsVersion     = "2.0.1"
 val redissonVersion       = "3.45.1"
 val scalaKryoVersion      = "1.3.0"
-val testContainersVersion = "0.43.0"
+val testContainersVersion = "0.44.1"
 val scalaCompatVersion    = "2.13.0"
 
 inThisBuild(
@@ -95,8 +95,8 @@ lazy val entities = project
   .settings(
     libraryDependencies ++=
       Seq(
-        "com.github.ghostdogpr"         %% "caliban-client"                % calibanVersion,
-        "com.softwaremill.sttp.client3" %% "async-http-client-backend-zio" % sttpVersion
+        "com.github.ghostdogpr"         %% "caliban-client" % calibanVersion,
+        "com.softwaremill.sttp.client4" %% "zio"            % sttpVersion
       )
   )
 
@@ -108,10 +108,10 @@ lazy val healthK8s = project
   .settings(
     libraryDependencies ++=
       Seq(
-        "com.coralogix"                 %% "zio-k8s-client"                % zioK8sVersion,
-        "dev.zio"                       %% "zio-cache"                     % zioCacheVersion,
-        "com.softwaremill.sttp.client3" %% "async-http-client-backend-zio" % sttpVersion,
-        "com.softwaremill.sttp.client3" %% "slf4j-backend"                 % sttpVersion
+        "com.coralogix"                 %% "zio-k8s-client" % zioK8sVersion,
+        "dev.zio"                       %% "zio-cache"      % zioCacheVersion,
+        "com.softwaremill.sttp.client4" %% "zio"            % sttpVersion,
+        "com.softwaremill.sttp.client4" %% "slf4j-backend"  % sttpVersion
       )
   )
 

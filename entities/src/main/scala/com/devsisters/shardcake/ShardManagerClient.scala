@@ -4,8 +4,8 @@ import caliban.client.Operations.IsOperation
 import caliban.client.SelectionBuilder
 import com.devsisters.shardcake.internal.GraphQLClient
 import com.devsisters.shardcake.internal.GraphQLClient.PodAddressInput
-import sttp.client3.SttpBackend
-import sttp.client3.asynchttpclient.zio.AsyncHttpClientZioBackend
+import sttp.client4.Backend
+import sttp.client4.httpclient.zio.HttpClientZioBackend
 import zio.{ Config => _, _ }
 
 /**
@@ -24,10 +24,10 @@ object ShardManagerClient {
    * A layer that returns a client for the Shard Manager API.
    * It requires an sttp backend. If you don't want to use your own backend, simply use `liveWithSttp`.
    */
-  val live: ZLayer[Config with SttpBackend[Task, Any], Nothing, ShardManagerClientLive] =
+  val live: ZLayer[Config with Backend[Task], Nothing, ShardManagerClientLive] =
     ZLayer {
       for {
-        sttpClient <- ZIO.service[SttpBackend[Task, Any]]
+        sttpClient <- ZIO.service[Backend[Task]]
         config     <- ZIO.service[Config]
       } yield new ShardManagerClientLive(sttpClient, config)
     }
@@ -37,7 +37,7 @@ object ShardManagerClient {
    * It contains its own sttp backend so you don't need to provide one.
    */
   val liveWithSttp: ZLayer[Config, Throwable, ShardManagerClient] =
-    AsyncHttpClientZioBackend.layer() >>> live
+    HttpClientZioBackend.layer() >>> live
 
   /**
    * A layer that mocks the Shard Manager, useful for testing with a single pod.
@@ -56,7 +56,7 @@ object ShardManagerClient {
       }
     }
 
-  class ShardManagerClientLive(sttp: SttpBackend[Task, Any], config: Config) extends ShardManagerClient {
+  class ShardManagerClientLive(sttp: Backend[Task], config: Config) extends ShardManagerClient {
     private def send[Origin: IsOperation, A](query: SelectionBuilder[Origin, A]): Task[A] =
       sttp.send(query.toRequest(config.shardManagerUri)).map(_.body).absolve
 
