@@ -30,7 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        java: ['adopt@1.11']
+        java: ['adopt@1.17']
         scala: ['2.12.21', '2.13.18', '3.3.7']
     steps:
       - name: Checkout current branch
@@ -58,7 +58,7 @@ jobs:
       - name: Setup Scala and Java
         uses: olafurpg/setup-scala@v10
         with:
-          java-version: adopt@1.11
+          java-version: adopt@1.17
       - name: Cache scala dependencies
         uses: coursier/cache-action@v6
       - name: Release artifacts
