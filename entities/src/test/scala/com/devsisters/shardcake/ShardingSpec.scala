@@ -2,7 +2,8 @@ package com.devsisters.shardcake
 
 import com.devsisters.shardcake.CounterActor.CounterMessage._
 import com.devsisters.shardcake.CounterActor._
-import com.devsisters.shardcake.interfaces.{ Serialization, Storage }
+import com.devsisters.shardcake.interfaces.JavaSerialization.javaSerialization
+import com.devsisters.shardcake.interfaces.Storage
 import zio.stream.{ SubscriptionRef, ZStream }
 import zio.test.TestAspect.{ sequential, withLiveClock }
 import zio.test._
@@ -144,7 +145,6 @@ object ShardingSpec extends ZIOSpecDefault {
         }
       }
     ).provideShared(
-      Serialization.javaSerialization,
       LocalSharding.live,
       ShardManagerClient.local,
       Storage.memory,

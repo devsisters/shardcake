@@ -1,5 +1,6 @@
 package com.devsisters.shardcake
 
+import com.devsisters.shardcake.interfaces.Serialization
 import zio.UIO
 
 import scala.util.Try
@@ -18,5 +19,5 @@ trait Broadcaster[-Msg] {
   /**
    * Broadcast a message and wait for a response from each consumer
    */
-  def broadcast[Res](topic: String)(msg: Replier[Res] => Msg): UIO[Map[PodAddress, Try[Res]]]
+  def broadcast[Res: Serialization](topic: String)(msg: Replier[Res] => Msg): UIO[Map[PodAddress, Try[Res]]]
 }

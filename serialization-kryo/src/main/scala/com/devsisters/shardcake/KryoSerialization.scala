@@ -1,36 +1,26 @@
 package com.devsisters.shardcake
 
 import com.devsisters.shardcake.interfaces.Serialization
-import com.typesafe.config.{ Config, ConfigFactory }
+import com.typesafe.config.ConfigFactory
 import io.altoo.serialization.kryo.scala.ScalaKryoSerializer
-import zio.{ Chunk, Task, ZIO, ZLayer }
+import zio.{ Chunk, Task, ZIO }
 
 object KryoSerialization {
+  implicit def kryoSerialization[A](implicit serializer: ScalaKryoSerializer): Serialization[A] =
+    new Serialization[A] {
+      def encode(message: A): Task[Array[Byte]]                              = ZIO.fromTry(serializer.serialize(message))
+      def decode(bytes: Array[Byte]): Task[A]                                = ZIO.fromTry(serializer.deserialize[A](bytes))
+      override def encodeChunk(messages: Chunk[A]): Task[Chunk[Array[Byte]]] =
+        ZIO.attempt(messages.map(serializer.serialize(_).get))
+      override def decodeChunk(bytes: Chunk[Array[Byte]]): Task[Chunk[A]]    =
+        ZIO.attempt(bytes.map(serializer.deserialize(_).get))
+    }
 
-  /**
-   * A layer that returns a serialization implementation using the Kryo library.
-   */
-  val live: ZLayer[Any, Throwable, Serialization] =
-    ZLayer(ZIO.attempt(ConfigFactory.defaultReference()).flatMap(make))
+  object Default {
+    private lazy val defaultKryoSerializer: ScalaKryoSerializer =
+      new ScalaKryoSerializer(ConfigFactory.defaultReference(), getClass.getClassLoader)
 
-  /**
-   * A layer that returns a serialization implementation using the Kryo library, taking a Config object.
-   * See https://github.com/altoo-ag/scala-kryo-serialization for more details about configuration.
-   */
-  def liveWithConfig(config: Config): ZLayer[Any, Throwable, Serialization] =
-    ZLayer(make(config))
-
-  private def make(config: Config): Task[Serialization] =
-    ZIO.attempt {
-      new ScalaKryoSerializer(config, getClass.getClassLoader)
-    }.map(serializer =>
-      new Serialization {
-        def encode(message: Any): Task[Array[Byte]]                              = ZIO.fromTry(serializer.serialize(message))
-        def decode[A](bytes: Array[Byte]): Task[A]                               = ZIO.fromTry(serializer.deserialize[A](bytes))
-        override def encodeChunk(messages: Chunk[Any]): Task[Chunk[Array[Byte]]] =
-          ZIO.attempt(messages.map(serializer.serialize(_).get))
-        override def decodeChunk[A](bytes: Chunk[Array[Byte]]): Task[Chunk[A]]   =
-          ZIO.attempt(bytes.map(serializer.deserialize[A](_).get))
-      }
-    )
+    implicit def defaultKryoSerialization[A]: Serialization[A] =
+      kryoSerialization[A](defaultKryoSerializer)
+  }
 }

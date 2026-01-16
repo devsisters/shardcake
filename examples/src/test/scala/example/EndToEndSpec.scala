@@ -3,6 +3,7 @@ package example
 import com.devsisters.shardcake.StorageRedis.Redis
 import com.devsisters.shardcake._
 import com.devsisters.shardcake.interfaces.PodsHealth
+import com.devsisters.shardcake.KryoSerialization.Default._
 import com.dimafeng.testcontainers.GenericContainer
 import dev.profunktor.redis4cats.Redis
 import dev.profunktor.redis4cats.connection.RedisClient
@@ -96,7 +97,6 @@ object EndToEndSpec extends ZIOSpecDefault {
       }
     ).provideShared(
       Sharding.live,
-      KryoSerialization.live,
       GrpcPods.live,
       ShardManagerClient.liveWithSttp,
       StorageRedis.live,

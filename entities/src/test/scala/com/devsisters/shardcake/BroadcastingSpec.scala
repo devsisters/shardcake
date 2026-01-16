@@ -1,9 +1,10 @@
 package com.devsisters.shardcake
 
-import com.devsisters.shardcake.interfaces.{ Serialization, Storage }
-import zio.test.TestAspect.{ sequential, withLiveClock }
+import com.devsisters.shardcake.interfaces.JavaSerialization.javaSerialization
+import com.devsisters.shardcake.interfaces.Storage
+import zio.test.TestAspect.{sequential, withLiveClock}
 import zio.test._
-import zio.{ Config => _, _ }
+import zio.{Config => _, _}
 
 import scala.util.Success
 
@@ -28,7 +29,6 @@ object BroadcastingSpec extends ZIOSpecDefault {
         }
       }
     ).provideShared(
-      Serialization.javaSerialization,
       LocalSharding.live,
       ShardManagerClient.local,
       Storage.memory,

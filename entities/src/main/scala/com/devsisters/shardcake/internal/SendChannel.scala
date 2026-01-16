@@ -6,24 +6,22 @@ import com.devsisters.shardcake.interfaces.{ Pods, Serialization }
 import zio.Task
 import zio.stream.ZStream
 
-private[shardcake] sealed trait SendChannel[+A] { self =>
+private[shardcake] sealed trait SendChannel[A] { self =>
   def foreach(f: A => Task[Unit]): Task[Unit]
   def send(
     pods: Pods,
-    serialization: Serialization,
     pod: PodAddress,
     entityId: String,
     recipientTypeName: String,
     replyId: Option[String]
-  ): Task[Option[Array[Byte]]]
+  )(implicit serialization: Serialization[A]): Task[Option[Array[Byte]]]
   def sendAndReceiveStream(
     pods: Pods,
-    serialization: Serialization,
     pod: PodAddress,
     entityId: String,
     recipientTypeName: String,
     replyId: Option[String]
-  ): ZStream[Any, Throwable, Array[Byte]]
+  )(implicit serialization: Serialization[A]): ZStream[Any, Throwable, Array[Byte]]
 }
 
 private[shardcake] object SendChannel {
@@ -31,23 +29,21 @@ private[shardcake] object SendChannel {
     def foreach(f: A => Task[Unit]): Task[Unit] = f(msg)
     def send(
       pods: Pods,
-      serialization: Serialization,
       pod: PodAddress,
       entityId: String,
       recipientTypeName: String,
       replyId: Option[String]
-    ): Task[Option[Array[Byte]]] =
+    )(implicit serialization: Serialization[A]): Task[Option[Array[Byte]]] =
       serialization
         .encode(msg)
         .flatMap(bytes => pods.sendMessage(pod, BinaryMessage(entityId, recipientTypeName, bytes, replyId)))
     def sendAndReceiveStream(
       pods: Pods,
-      serialization: Serialization,
       pod: PodAddress,
       entityId: String,
       recipientTypeName: String,
       replyId: Option[String]
-    ): ZStream[Any, Throwable, Array[Byte]] =
+    )(implicit serialization: Serialization[A]): ZStream[Any, Throwable, Array[Byte]] =
       ZStream.unwrap(
         serialization
           .encode(msg)
@@ -61,12 +57,11 @@ private[shardcake] object SendChannel {
     def foreach(f: A => Task[Unit]): Task[Unit] = messages.runForeach(f)
     def send(
       pods: Pods,
-      serialization: Serialization,
       pod: PodAddress,
       entityId: String,
       recipientTypeName: String,
       replyId: Option[String]
-    ): Task[Option[Array[Byte]]] =
+    )(implicit serialization: Serialization[A]): Task[Option[Array[Byte]]] =
       pods.sendStream(
         pod,
         entityId,
@@ -78,12 +73,11 @@ private[shardcake] object SendChannel {
       )
     def sendAndReceiveStream(
       pods: Pods,
-      serialization: Serialization,
       pod: PodAddress,
       entityId: String,
       recipientTypeName: String,
       replyId: Option[String]
-    ): ZStream[Any, Throwable, Array[Byte]] = {
+    )(implicit serialization: Serialization[A]): ZStream[Any, Throwable, Array[Byte]] = {
       val requestStream = messages.mapChunksZIO(messages =>
         serialization
           .encodeChunk(messages)

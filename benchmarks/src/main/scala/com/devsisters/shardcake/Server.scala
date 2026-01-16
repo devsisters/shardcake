@@ -1,6 +1,7 @@
 package com.devsisters.shardcake
 
 import com.devsisters.shardcake.interfaces.Storage
+import com.devsisters.shardcake.KryoSerialization.Default._
 import zio.{ Config => _, _ }
 import zio.stream.ZStream
 
@@ -51,7 +52,6 @@ object Server {
 
   val sharding: ZLayer[Config, Throwable, Sharding with GrpcConfig] =
     ZLayer.makeSome[Config, Sharding with GrpcConfig](
-      KryoSerialization.live,
       memory,
       grpcConfig,
       shardManagerClient,

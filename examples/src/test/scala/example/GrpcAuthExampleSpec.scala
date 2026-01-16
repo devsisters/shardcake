@@ -2,6 +2,7 @@ package example
 
 import com.devsisters.shardcake._
 import com.devsisters.shardcake.interfaces.{ Pods, Storage }
+import com.devsisters.shardcake.KryoSerialization.Default._
 import io.grpc.{ Metadata, Status }
 import scalapb.zio_grpc.{ ZClientInterceptor, ZTransform }
 import zio.test._
@@ -57,7 +58,6 @@ object GrpcAuthExampleSpec extends ZIOSpecDefault {
       config,
       grpcConfigLayer(validAuthenticationKey),
       Sharding.live,
-      KryoSerialization.live,
       GrpcPods.live,
       GrpcShardingService.live
     )

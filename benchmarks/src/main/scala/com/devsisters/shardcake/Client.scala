@@ -1,5 +1,6 @@
 package com.devsisters.shardcake
 
+import com.devsisters.shardcake.KryoSerialization.Default._
 import com.devsisters.shardcake.Server.Message.Ping
 import com.devsisters.shardcake.Server.PingPongEntity
 import zio.{ Config => _, _ }

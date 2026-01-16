@@ -2,6 +2,7 @@ package example.simple
 
 import com.devsisters.shardcake._
 import com.devsisters.shardcake.interfaces._
+import com.devsisters.shardcake.interfaces.JavaSerialization.javaSerialization
 import example.simple.GuildBehavior._
 import example.simple.GuildBehavior.GuildMessage.Join
 import zio.{ Config => _, _ }
@@ -26,7 +27,6 @@ object GuildApp extends ZIOAppDefault {
       .provide(
         ZLayer.succeed(Config.default),
         ZLayer.succeed(GrpcConfig.default),
-        Serialization.javaSerialization,
         Storage.memory,
         ShardManagerClient.liveWithSttp,
         GrpcPods.live,

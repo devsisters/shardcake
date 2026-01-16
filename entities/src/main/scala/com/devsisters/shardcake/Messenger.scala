@@ -1,6 +1,7 @@
 package com.devsisters.shardcake
 
 import com.devsisters.shardcake.errors.StreamCancelled
+import com.devsisters.shardcake.interfaces.Serialization
 import zio._
 import zio.stream.ZStream
 
@@ -18,7 +19,7 @@ trait Messenger[-Msg] {
   /**
    * Send a message and wait for a response of type `Res`
    */
-  def send[Res](entityId: String)(msg: Replier[Res] => Msg): Task[Res]
+  def send[Res: Serialization](entityId: String)(msg: Replier[Res] => Msg): Task[Res]
 
   /**
    * Send a message and receive a stream of responses of type `Res`.
@@ -27,7 +28,9 @@ trait Messenger[-Msg] {
    * streaming responses. See `sendStreamAutoRestart` for an alternative that will automatically restart the stream
    * in case of rebalance.
    */
-  def sendAndReceiveStream[Res](entityId: String)(msg: StreamReplier[Res] => Msg): Task[ZStream[Any, Throwable, Res]]
+  def sendAndReceiveStream[Res: Serialization](entityId: String)(
+    msg: StreamReplier[Res] => Msg
+  ): Task[ZStream[Any, Throwable, Res]]
 
   /**
    * Send a stream of messages.
@@ -37,7 +40,7 @@ trait Messenger[-Msg] {
   /**
    * Send a stream of messages and receive a stream of responses of type `Res`.
    */
-  def sendStreamAndReceiveStream[Res](entityId: String)(
+  def sendStreamAndReceiveStream[Res: Serialization](entityId: String)(
     messages: StreamReplier[Res] => ZStream[Any, Throwable, Msg]
   ): Task[ZStream[Any, Throwable, Res]]
 
@@ -50,7 +53,7 @@ trait Messenger[-Msg] {
    * cursor from the responses so that when the remote entity is rebalanced, a new message can be sent with the right
    * cursor according to what we've seen in the previous stream of responses.
    */
-  def sendAndReceiveStreamAutoRestart[Cursor, Res](entityId: String, cursor: Cursor)(
+  def sendAndReceiveStreamAutoRestart[Cursor, Res: Serialization](entityId: String, cursor: Cursor)(
     msg: (Cursor, StreamReplier[Res]) => Msg
   )(
     updateCursor: (Cursor, Res) => Cursor
@@ -79,7 +82,7 @@ trait Messenger[-Msg] {
    * cursor from the responses so that when the remote entity is rebalanced, a new message can be sent with the right
    * cursor according to what we've seen in the previous stream of responses.
    */
-  def sendStreamAndReceiveStreamAutoRestart[Cursor, Res](entityId: String, cursor: Cursor)(
+  def sendStreamAndReceiveStreamAutoRestart[Cursor, Res: Serialization](entityId: String, cursor: Cursor)(
     msg: (Cursor, StreamReplier[Res]) => ZStream[Any, Throwable, Msg]
   )(
     updateCursor: (Cursor, Res) => Cursor

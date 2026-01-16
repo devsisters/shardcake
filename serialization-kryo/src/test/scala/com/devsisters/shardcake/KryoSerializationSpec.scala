@@ -1,7 +1,6 @@
 package com.devsisters.shardcake
 
-import com.devsisters.shardcake.interfaces.Serialization
-import zio.{ Scope, ZIO }
+import zio.Scope
 import zio.test._
 
 object KryoSerializationSpec extends ZIOSpecDefault {
@@ -11,9 +10,9 @@ object KryoSerializationSpec extends ZIOSpecDefault {
         case class Test(a: Int, b: String)
         val expected = Test(2, "test")
         for {
-          bytes  <- ZIO.serviceWithZIO[Serialization](_.encode(expected))
-          actual <- ZIO.serviceWithZIO[Serialization](_.decode[Test](bytes))
+          bytes  <- KryoSerialization.Default.defaultKryoSerialization.encode(expected)
+          actual <- KryoSerialization.Default.defaultKryoSerialization[Test].decode(bytes)
         } yield assertTrue(expected == actual)
       }
-    ).provideShared(KryoSerialization.live)
+    )
 }
