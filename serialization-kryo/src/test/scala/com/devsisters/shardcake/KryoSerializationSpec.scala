@@ -8,10 +8,11 @@ object KryoSerializationSpec extends ZIOSpecDefault {
     suite("KryoSerializationSpec")(
       test("serialize back and forth") {
         case class Test(a: Int, b: String)
-        val expected = Test(2, "test")
+        val expected      = Test(2, "test")
+        val serialization = KryoSerialization.Default.defaultKryoSerialization[Test]
         for {
-          bytes  <- KryoSerialization.Default.defaultKryoSerialization.encode(expected)
-          actual <- KryoSerialization.Default.defaultKryoSerialization[Test].decode(bytes)
+          bytes  <- serialization.encode(expected)
+          actual <- serialization.decode(bytes)
         } yield assertTrue(expected == actual)
       }
     )
