@@ -22,7 +22,7 @@ class Sharding private (
   shardAssignments: Ref[Map[ShardId, PodAddress]],
   entityStates: Ref[Map[String, EntityState]],
   singletons: Ref.Synchronized[List[(String, UIO[Nothing], Option[Fiber[Nothing, Nothing]])]],
-  replyChannels: Ref[Map[String, ReplyChannel[Nothing]]], // channel for each pending reply,
+  replyChannels: Ref[Map[String, ReplyChannel[Any]]], // channel for each pending reply,
   lastUnhealthyNodeReported: Ref[OffsetDateTime],
   isShuttingDownRef: Ref[Boolean],
   shardManager: ShardManagerClient,
@@ -181,51 +181,55 @@ class Sharding private (
   private[shardcake] def isShuttingDown: UIO[Boolean] =
     isShuttingDownRef.get
 
-  def sendToLocalEntity[Msg: Serialization](msg: BinaryMessage): Task[Option[Array[Byte]]] =
+  def sendToLocalEntity(msg: BinaryMessage): Task[Option[Array[Byte]]] =
     for {
-      replyChannel <- ReplyChannel.single[Msg]
+      replyChannel <- ReplyChannel.single[Any]
       _            <- sendToLocalEntity(msg, replyChannel)
       res          <- replyChannel.output
-      bytes        <- ZIO.foreach(res)(implicitly[Serialization[Msg]].encode)
+      bytes        <- ZIO.foreach(res) { case (msg, serialization) => serialization.encode(msg) }
     } yield bytes
 
-  def sendToLocalEntityAndReceiveStream[Msg: Serialization](msg: BinaryMessage): ZStream[Any, Throwable, Array[Byte]] =
+  def sendToLocalEntityAndReceiveStream(msg: BinaryMessage): ZStream[Any, Throwable, Array[Byte]] =
     ZStream.unwrap {
       for {
-        replyChannel <- ReplyChannel.stream[Msg]
-        _            <- sendToLocalEntity(msg, replyChannel)
-      } yield replyChannel.output.mapChunksZIO(implicitly[Serialization[Msg]].encodeChunk)
+        replyChannel     <- ReplyChannel.stream[Any]
+        _                <- sendToLocalEntity(msg, replyChannel)
+        (promise, stream) = replyChannel.output
+        serialization    <- promise.await
+      } yield stream.mapChunksZIO(serialization.encodeChunk)
     }
 
-  def sendStreamToLocalEntity[Msg: Serialization](
+  def sendStreamToLocalEntity(
     messages: ZStream[Any, Throwable, BinaryMessage]
   ): Task[Option[Array[Byte]]] =
     ZIO.scoped {
       for {
-        replyChannel <- ReplyChannel.single[Msg]
+        replyChannel <- ReplyChannel.single[Any]
         _            <- messages.runForeach(sendToLocalEntity(_, replyChannel)).onError(replyChannel.fail).forkScoped
         res          <- replyChannel.output
-        bytes        <- ZIO.foreach(res)(implicitly[Serialization[Msg]].encode)
+        bytes        <- ZIO.foreach(res) { case (msg, serialization) => serialization.encode(msg) }
       } yield bytes
     }
 
-  def sendStreamToLocalEntityAndReceiveStream[Msg: Serialization](
+  def sendStreamToLocalEntityAndReceiveStream(
     messages: ZStream[Any, Throwable, BinaryMessage]
   ): ZStream[Any, Throwable, Array[Byte]] =
     ZStream.unwrapScoped {
       for {
-        replyChannel <- ReplyChannel.stream[Msg]
-        _            <- messages.runForeach(sendToLocalEntity(_, replyChannel)).onError(replyChannel.fail).forkScoped
-      } yield replyChannel.output.mapChunksZIO(implicitly[Serialization[Msg]].encodeChunk)
+        replyChannel     <- ReplyChannel.stream[Any]
+        _                <- messages.runForeach(sendToLocalEntity(_, replyChannel)).onError(replyChannel.fail).forkScoped
+        (promise, stream) = replyChannel.output
+        serialization    <- promise.await
+      } yield stream.mapChunksZIO(serialization.encodeChunk)
     }
 
-  private def sendToLocalEntity(msg: BinaryMessage, replyChannel: ReplyChannel[Nothing]): Task[Unit] =
+  private def sendToLocalEntity(msg: BinaryMessage, replyChannel: ReplyChannel[Any]): Task[Unit] =
     entityStates.get.flatMap(_.get(msg.entityType) match {
       case Some(state) => state.processBinary(msg, replyChannel).unit
       case None        => ZIO.fail(new Exception(s"Entity type ${msg.entityType} was not registered."))
     })
 
-  private[shardcake] def initReply(id: String, replyChannel: ReplyChannel[Nothing]): UIO[Unit] =
+  private[shardcake] def initReply(id: String, replyChannel: ReplyChannel[Any]): UIO[Unit] =
     replyChannels
       .getAndUpdate(_.updated(id, replyChannel))
       .flatMap(beforeReplyChannels =>
@@ -233,12 +237,15 @@ class Sharding private (
       )
       .unit
 
-  def reply[Reply](reply: Reply, replier: Replier[Reply]): UIO[Unit] =
+  def reply[Reply: Serialization](reply: Reply, replier: Replier[Reply]): UIO[Unit] =
     replyChannels
       .modify(repliers => (repliers.get(replier.id), repliers - replier.id))
       .flatMap(ZIO.foreachDiscard(_)(_.asInstanceOf[ReplyChannel[Reply]].replySingle(reply)))
 
-  def replyStream[Reply](replies: ZStream[Any, Nothing, Reply], replier: StreamReplier[Reply]): UIO[Unit] =
+  def replyStream[Reply: Serialization](
+    replies: ZStream[Any, Nothing, Reply],
+    replier: StreamReplier[Reply]
+  ): UIO[Unit] =
     replyChannels
       .modify(repliers => (repliers.get(replier.id), repliers - replier.id))
       .flatMap(ZIO.foreachDiscard(_)(_.asInstanceOf[ReplyChannel[Reply]].replyStream(replies)))
@@ -268,20 +275,22 @@ class Sharding private (
     entityStates.get.flatMap(
       _.get(recipientTypeName) match {
         case Some(state) =>
-          state.entityManager.asInstanceOf[EntityManager[Msg]].send(entityId, msg, replyId, replyChannel)
+          state.entityManager
+            .asInstanceOf[EntityManager[Msg]]
+            .send(entityId, msg, replyId, replyChannel.asInstanceOf[ReplyChannel[Any]])
         case None        =>
           ZIO.fail(new Exception(s"Entity type $recipientTypeName was not registered."))
       }
     )
 
-  private def sendToPod[Msg: Serialization, Res: Serialization](
+  private def sendToPod[Msg, Res](
     recipientTypeName: String,
     entityId: String,
     pod: PodAddress,
     sendChannel: SendChannel[Msg],
     replyChannel: ReplyChannel[Res],
     replyId: Option[String]
-  ): Task[Unit] =
+  )(implicit msgSerialization: Serialization[Msg], resSerialization: Serialization[Res]): Task[Unit] =
     if (pod == address && !config.simulateRemotePods) {
       val run = sendChannel.foreach(sendToSelf(recipientTypeName, entityId, _, replyId, replyChannel))
       sendChannel match {
@@ -296,7 +305,7 @@ class Sharding private (
             .tapError(handleError)
             .flatMap {
               case Some(bytes) =>
-                implicitly[Serialization[Res]].decode(bytes).flatMap(replyChannel.replySingle)
+                resSerialization.decode(bytes).flatMap(replyChannel.replySingle(_))
               case None        => replyChannel.end
             }
         case _: ReplyChannel.FromQueue[_]   =>
@@ -304,7 +313,7 @@ class Sharding private (
             sendChannel
               .sendAndReceiveStream(pods, pod, entityId, recipientTypeName, replyId)
               .tapError(handleError)
-              .mapChunksZIO(implicitly[Serialization[Res]].decodeChunk)
+              .mapChunksZIO(resSerialization.decodeChunk)
           )
       }
     }
@@ -364,7 +373,7 @@ class Sharding private (
           replyChannel <- ReplyChannel.single[Res]
           _            <- sendMessageGeneric(entityId, msg, replyId, replyChannel)
           res          <- replyChannel.output
-        } yield res
+        } yield res.map(_._1)
 
       private def sendMessageAndReceiveStream[Res: Serialization](
         entityId: String,
@@ -374,7 +383,8 @@ class Sharding private (
         for {
           replyChannel <- ReplyChannel.stream[Res]
           _            <- sendMessageGeneric(entityId, msg, replyId, replyChannel)
-        } yield replyChannel.output
+          (_, stream)   = replyChannel.output
+        } yield stream
 
       private def sendStreamAndReceiveStream[Res: Serialization](
         entityId: String,
@@ -384,7 +394,8 @@ class Sharding private (
         for {
           replyChannel <- ReplyChannel.stream[Res]
           _            <- sendStreamGeneric(entityId, messages, replyId, replyChannel)
-        } yield replyChannel.output
+          (_, stream)   = replyChannel.output
+        } yield stream
 
       private def sendMessageGeneric[Res: Serialization](
         entityId: String,
@@ -496,7 +507,7 @@ class Sharding private (
                                             Clock.sleep(200.millis) *> trySend
                                           }.onError(replyChannel.fail)
                           res          <- replyChannel.output
-                        } yield res
+                        } yield res.map(_._1)
 
                       val send = trySend.flatMap {
                         case Some(value) => ZIO.succeed(value)
@@ -538,7 +549,7 @@ class Sharding private (
   ): URIO[Scope with R, Unit] =
     for {
       entityManager <- EntityManager.make(recipientType, behavior, terminateMessage, self, config, entityMaxIdleTime)
-      processBinary  = (msg: BinaryMessage, replyChannel: ReplyChannel[Nothing]) =>
+      processBinary  = (msg: BinaryMessage, replyChannel: ReplyChannel[Any]) =>
                          implicitly[Serialization[Req]]
                            .decode(msg.body)
                            .flatMap(entityManager.send(msg.entityId, _, msg.replyId, replyChannel))
@@ -571,7 +582,7 @@ object Sharding {
 
   private[shardcake] case class EntityState(
     entityManager: EntityManager[Nothing],
-    processBinary: (BinaryMessage, ReplyChannel[Nothing]) => UIO[Unit]
+    processBinary: (BinaryMessage, ReplyChannel[Any]) => UIO[Unit]
   )
 
   /**
@@ -596,7 +607,7 @@ object Sharding {
                                            }
                                          )
                                        )
-        replyChannels             <- Ref.make[Map[String, ReplyChannel[Nothing]]](Map())
+        replyChannels             <- Ref.make[Map[String, ReplyChannel[Any]]](Map())
         cdt                       <- Clock.currentDateTime
         lastUnhealthyNodeReported <- Ref.make(cdt)
         shuttingDown              <- Ref.make(false)

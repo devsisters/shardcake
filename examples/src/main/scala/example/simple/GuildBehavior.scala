@@ -1,6 +1,7 @@
 package example.simple
 
 import com.devsisters.shardcake.{ EntityType, Replier, Sharding, StreamReplier }
+import com.devsisters.shardcake.KryoSerialization.Default._
 import zio.stream.ZStream
 import zio.{ Dequeue, RIO, Ref, ZIO }
 

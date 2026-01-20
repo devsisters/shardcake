@@ -11,7 +11,7 @@ private[shardcake] trait EntityManager[-Req] {
     entityId: String,
     req: Req,
     replyId: Option[String],
-    replyChannel: ReplyChannel[Nothing]
+    replyChannel: ReplyChannel[Any]
   ): IO[EntityNotManagedByThisPod, Unit]
   def terminateEntity(entityId: String): UIO[Unit]
   def terminateEntitiesOnShards(shards: Set[ShardId]): UIO[Unit]
@@ -101,7 +101,7 @@ private[shardcake] object EntityManager {
       entityId: String,
       req: Req,
       replyId: Option[String],
-      replyChannel: ReplyChannel[Nothing]
+      replyChannel: ReplyChannel[Any]
     ): IO[EntityNotManagedByThisPod, Unit] =
       for {
         // first, verify that this entity should be handled by this pod

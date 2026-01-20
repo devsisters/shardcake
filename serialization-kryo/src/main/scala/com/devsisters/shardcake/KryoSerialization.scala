@@ -13,7 +13,7 @@ object KryoSerialization {
       override def encodeChunk(messages: Chunk[A]): Task[Chunk[Array[Byte]]] =
         ZIO.attempt(messages.map(serializer.serialize(_).get))
       override def decodeChunk(bytes: Chunk[Array[Byte]]): Task[Chunk[A]]    =
-        ZIO.attempt(bytes.map(serializer.deserialize(_).get))
+        ZIO.attempt(bytes.map(serializer.deserialize[A](_).get))
     }
 
   object Default {

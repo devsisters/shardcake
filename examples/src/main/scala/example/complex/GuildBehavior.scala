@@ -1,6 +1,7 @@
 package example.complex
 
 import com.devsisters.shardcake.{ EntityType, Replier, Sharding }
+import com.devsisters.shardcake.KryoSerialization.Default._
 import dev.profunktor.redis4cats.RedisCommands
 import zio.{ Dequeue, Promise, RIO, Task, ZIO }
 
