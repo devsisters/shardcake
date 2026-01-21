@@ -16,6 +16,7 @@ val redissonVersion       = "3.45.1"
 val scalaKryoVersion      = "1.3.0"
 val testContainersVersion = "0.44.1"
 val scalaCompatVersion    = "2.13.0"
+val upickleVersion        = "4.4.2"
 
 inThisBuild(
   List(
@@ -57,6 +58,7 @@ lazy val root = project
     storageRedis,
     storageRedisson,
     serializationKryo,
+    serializationUpickle,
     grpcProtocol,
     examples,
     benchmarks
@@ -153,6 +155,18 @@ lazy val serializationKryo = project
       )
   )
 
+lazy val serializationUpickle = project
+  .in(file("serialization-upickle"))
+  .settings(name := "shardcake-serialization-upickle")
+  .settings(commonSettings)
+  .dependsOn(core)
+  .settings(
+    libraryDependencies ++=
+      Seq(
+        "com.lihaoyi" %% "upickle" % upickleVersion
+      )
+  )
+
 lazy val grpcProtocol = project
   .in(file("protocol-grpc"))
   .settings(name := "shardcake-protocol-grpc")
@@ -186,7 +200,7 @@ lazy val examples = project
         "dev.zio" %% "zio-streams" % zioVersion
       )
   )
-  .dependsOn(manager, storageRedis, grpcProtocol, serializationKryo)
+  .dependsOn(manager, storageRedis, grpcProtocol, serializationKryo, serializationUpickle)
 
 lazy val benchmarks = project
   .in(file("benchmarks"))
