@@ -7,6 +7,7 @@ val zioVersion            = "2.1.24"
 val zioGrpcVersion        = "0.6.3"
 val grpcNettyVersion      = "1.71.0"
 val zioK8sVersion         = "3.1.0"
+val zioK8sSttpVersion     = "3.11.0"
 val zioCacheVersion       = "0.2.4"
 val zioCatsInteropVersion = "23.1.0.5"
 val sttpVersion           = "4.0.13"
@@ -110,8 +111,8 @@ lazy val healthK8s = project
       Seq(
         "com.coralogix"                 %% "zio-k8s-client" % zioK8sVersion,
         "dev.zio"                       %% "zio-cache"      % zioCacheVersion,
-        "com.softwaremill.sttp.client4" %% "zio"            % sttpVersion,
-        "com.softwaremill.sttp.client4" %% "slf4j-backend"  % sttpVersion
+        "com.softwaremill.sttp.client3" %% "zio"            % zioK8sSttpVersion,
+        "com.softwaremill.sttp.client3" %% "slf4j-backend"  % zioK8sSttpVersion
       )
   )
 
