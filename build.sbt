@@ -111,8 +111,8 @@ lazy val healthK8s = project
       Seq(
         "com.coralogix"                 %% "zio-k8s-client" % zioK8sVersion,
         "dev.zio"                       %% "zio-cache"      % zioCacheVersion,
-        "com.softwaremill.sttp.client4" %% "zio"            % zioK8sSttpVersion,
-        "com.softwaremill.sttp.client4" %% "slf4j-backend"  % zioK8sSttpVersion
+        "com.softwaremill.sttp.client3" %% "zio"            % zioK8sSttpVersion,
+        "com.softwaremill.sttp.client3" %% "slf4j-backend"  % zioK8sSttpVersion
       )
   )
 
