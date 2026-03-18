@@ -19,7 +19,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Setup Scala and Java
-        uses: olafurpg/setup-scala@v14
+        uses: coursier/setup-action@v2
       - name: Cache scala dependencies
         uses: coursier/cache-action@v8
       - name: Lint code
@@ -30,7 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        java: ['openjdk@1.17']
+        java: ['adoptium:17']
         scala: ['2.12.21', '2.13.18', '3.3.7']
     steps:
       - name: Checkout current branch
@@ -38,9 +38,9 @@ jobs:
         with:
           fetch-depth: 0
       - name: Setup Scala and Java
-        uses: olafurpg/setup-scala@v14
+        uses: coursier/setup-action@v2
         with:
-          java-version: ${{ matrix.java }}
+          jvm: ${{ matrix.java }}
       - name: Cache scala dependencies
         uses: coursier/cache-action@v8
       - name: Run tests
@@ -56,9 +56,9 @@ jobs:
         with:
           fetch-depth: 0
       - name: Setup Scala and Java
-        uses: olafurpg/setup-scala@v14
+        uses: coursier/setup-action@v2
         with:
-          java-version: openjdk@1.17
+          jvm: adoptium:17
       - name: Cache scala dependencies
         uses: coursier/cache-action@v8
       - name: Release artifacts
