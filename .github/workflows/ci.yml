@@ -20,6 +20,8 @@ jobs:
           fetch-depth: 0
       - name: Setup Scala and Java
         uses: coursier/setup-action@v2
+        with:
+          apps: sbt
       - name: Cache scala dependencies
         uses: coursier/cache-action@v8
       - name: Lint code
@@ -41,6 +43,7 @@ jobs:
         uses: coursier/setup-action@v2
         with:
           jvm: ${{ matrix.java }}
+          apps: sbt
       - name: Cache scala dependencies
         uses: coursier/cache-action@v8
       - name: Run tests
@@ -59,6 +62,7 @@ jobs:
         uses: coursier/setup-action@v2
         with:
           jvm: adoptium:17
+          apps: sbt
       - name: Cache scala dependencies
         uses: coursier/cache-action@v8
       - name: Release artifacts
