@@ -19,7 +19,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Setup Scala and Java
-        uses: coursier/setup-action@v2
+        uses: coursier/setup-action@v3
         with:
           apps: sbt
       - name: Cache scala dependencies
@@ -40,7 +40,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Setup Scala and Java
-        uses: coursier/setup-action@v2
+        uses: coursier/setup-action@v3
         with:
           jvm: ${{ matrix.java }}
           apps: sbt
@@ -59,7 +59,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Setup Scala and Java
-        uses: coursier/setup-action@v2
+        uses: coursier/setup-action@v3
         with:
           jvm: adoptium:17
           apps: sbt
