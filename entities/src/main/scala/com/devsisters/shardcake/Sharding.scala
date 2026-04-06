@@ -506,15 +506,18 @@ class Sharding private (
     entityType: EntityType[Req],
     behavior: (String, Queue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
-    entityMaxIdleTime: Option[Duration] = None
-  ): URIO[Scope with R, Unit] = registerRecipient(entityType, behavior, terminateMessage, entityMaxIdleTime) *>
-    eventsHub.publish(ShardingRegistrationEvent.EntityRegistered(entityType)).unit
+    entityMaxIdleTime: Option[Duration] = None,
+    loadEntity: Req => Boolean = (_: Req) => true
+  ): URIO[Scope with R, Unit] =
+    registerRecipient(entityType, behavior, terminateMessage, entityMaxIdleTime, loadEntity) *>
+      eventsHub.publish(ShardingRegistrationEvent.EntityRegistered(entityType)).unit
 
   def registerTopic[R, Req: Tag](
     topicType: TopicType[Req],
     behavior: (String, Queue[Req]) => RIO[R, Nothing],
-    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
-  ): URIO[Scope with R, Unit] = registerRecipient(topicType, behavior, terminateMessage) *>
+    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
+    loadEntity: Req => Boolean = (_: Req) => true
+  ): URIO[Scope with R, Unit] = registerRecipient(topicType, behavior, terminateMessage, None, loadEntity) *>
     eventsHub.publish(ShardingRegistrationEvent.TopicRegistered(topicType)).unit
 
   def getShardingRegistrationEvents: ZStream[Any, Nothing, ShardingRegistrationEvent] =
@@ -524,10 +527,19 @@ class Sharding private (
     recipientType: RecipientType[Req],
     behavior: (String, Queue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
-    entityMaxIdleTime: Option[Duration] = None
+    entityMaxIdleTime: Option[Duration],
+    loadEntity: Req => Boolean
   ): URIO[Scope with R, Unit] =
     for {
-      entityManager <- EntityManager.make(recipientType, behavior, terminateMessage, self, config, entityMaxIdleTime)
+      entityManager <- EntityManager.make(
+                         recipientType,
+                         behavior,
+                         terminateMessage,
+                         self,
+                         config,
+                         entityMaxIdleTime,
+                         loadEntity
+                       )
       processBinary  = (msg: BinaryMessage, replyChannel: ReplyChannel[Nothing]) =>
                          serialization
                            .decode[Req](msg.body)
@@ -648,27 +660,35 @@ object Sharding {
    * It takes a `behavior` which is a function from an entity ID and a queue of messages to a ZIO computation that runs forever and consumes those messages.
    * You can use `ZIO.interrupt` from the behavior to stop it (it will be restarted the next time the entity receives a message).
    * If provided, the optional `terminateMessage` will be sent to the entity before it is stopped, allowing for cleanup logic.
+   * If provided, `loadEntity` is a predicate that determines whether a new entity should be created for an incoming message.
+   * When it returns `false` and the entity doesn't already exist, the message is discarded. Defaults to always creating the entity.
    */
   def registerEntity[R, Req: Tag](
     entityType: EntityType[Req],
     behavior: (String, Queue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
-    entityMaxIdleTime: Option[Duration] = None
+    entityMaxIdleTime: Option[Duration] = None,
+    loadEntity: Req => Boolean = (_: Req) => true
   ): URIO[Sharding with Scope with R, Unit] =
-    ZIO.serviceWithZIO[Sharding](_.registerEntity[R, Req](entityType, behavior, terminateMessage, entityMaxIdleTime))
+    ZIO.serviceWithZIO[Sharding](
+      _.registerEntity[R, Req](entityType, behavior, terminateMessage, entityMaxIdleTime, loadEntity)
+    )
 
   /**
    * Register a new topic type, allowing pods to broadcast messages to subscribers.
    * It takes a `behavior` which is a function from a topic and a queue of messages to a ZIO computation that runs forever and consumes those messages.
    * You can use `ZIO.interrupt` from the behavior to stop it (it will be restarted the next time the topic receives a message).
    * If provided, the optional `terminateMessage` will be sent to the topic before it is stopped, allowing for cleanup logic.
+   * If provided, `loadEntity` is a predicate that determines whether a new entity should be created for an incoming message.
+   * When it returns `false` and the entity doesn't already exist, the message is discarded. Defaults to always creating the entity.
    */
   def registerTopic[R, Req: Tag](
     topicType: TopicType[Req],
     behavior: (String, Queue[Req]) => RIO[R, Nothing],
-    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
+    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
+    loadEntity: Req => Boolean = (_: Req) => true
   ): URIO[Sharding with Scope with R, Unit] =
-    ZIO.serviceWithZIO[Sharding](_.registerTopic[R, Req](topicType, behavior, terminateMessage))
+    ZIO.serviceWithZIO[Sharding](_.registerTopic[R, Req](topicType, behavior, terminateMessage, loadEntity))
 
   /**
    * Get an object that allows sending messages to a given entity type.

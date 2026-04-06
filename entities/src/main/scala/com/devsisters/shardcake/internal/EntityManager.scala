@@ -27,7 +27,8 @@ private[shardcake] object EntityManager {
     terminateMessage: Signal => Option[Req],
     sharding: Sharding,
     config: Config,
-    entityMaxIdleTime: Option[Duration]
+    entityMaxIdleTime: Option[Duration],
+    loadEntity: Req => Boolean
   ): URIO[R, EntityManager[Req]] =
     for {
       entities               <- Ref.Synchronized.make[Map[String, Either[Queue[Req], Signal]]](Map())
@@ -41,7 +42,8 @@ private[shardcake] object EntityManager {
       entitiesLastReceivedAt,
       sharding,
       config,
-      entityMaxIdleTime
+      entityMaxIdleTime,
+      loadEntity
     )
 
   private val currentTimeInMilliseconds: UIO[EpochMillis] =
@@ -55,7 +57,8 @@ private[shardcake] object EntityManager {
     entitiesLastReceivedAt: Ref[Map[String, EpochMillis]],
     sharding: Sharding,
     config: Config,
-    entityMaxIdleTime: Option[Duration]
+    entityMaxIdleTime: Option[Duration],
+    loadEntity: Req => Boolean
   ) extends EntityManager[Req] {
     private val gauge = Metrics.entities.tagged("type", recipientType.name)
 
@@ -115,14 +118,18 @@ private[shardcake] object EntityManager {
         // find the queue for that entity, or create it if needed
         map   <- entities.get
         queue <- map.get(entityId) match {
-                   case Some(queue @ Left(_)) => ZIO.succeed(queue)
-                   case _                     => getOrCreateQueue(entityId)
+                   case Some(queue @ Left(_))    => ZIO.succeed(Some(queue))
+                   case None if !loadEntity(req) => ZIO.succeed(None)
+                   case _                        => getOrCreateQueue(entityId).asSome
                  }
         _     <- queue match {
-                   case Right(_)    =>
+                   case None              =>
+                     // loadEntity returned false, do nothing
+                     replyChannel.end
+                   case Some(Right(_))    =>
                      // the queue is shutting down, try again a little later
                      Clock.sleep(100 millis) *> send(entityId, req, replyId, replyChannel)
-                   case Left(queue) =>
+                   case Some(Left(queue)) =>
                      currentTimeInMilliseconds.flatMap(cdt => entitiesLastReceivedAt.update(_ + (entityId -> cdt))) *>
                        // add the message to the queue and setup the reply channel if needed
                        (replyId match {
