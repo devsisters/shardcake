@@ -25,3 +25,4 @@ vuepress/docs/.vuepress/dist
 project/project/metals.sbt
 project/project/project/metals.sbt
 .cursor
+.claude

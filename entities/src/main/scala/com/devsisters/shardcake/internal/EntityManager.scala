@@ -27,7 +27,8 @@ private[shardcake] object EntityManager {
     terminateMessage: Signal => Option[Req],
     sharding: Sharding,
     config: Config,
-    entityMaxIdleTime: Option[Duration]
+    entityMaxIdleTime: Option[Duration],
+    loadEntity: Req => Boolean
   ): URIO[R, EntityManager[Req]] =
     for {
       entities               <- Ref.Synchronized.make[Map[String, Either[Queue[Req], Signal]]](Map())
@@ -41,7 +42,8 @@ private[shardcake] object EntityManager {
       entitiesLastReceivedAt,
       sharding,
       config,
-      entityMaxIdleTime
+      entityMaxIdleTime,
+      loadEntity
     )
 
   private val currentTimeInMilliseconds: UIO[EpochMillis] =
@@ -55,7 +57,8 @@ private[shardcake] object EntityManager {
     entitiesLastReceivedAt: Ref[Map[String, EpochMillis]],
     sharding: Sharding,
     config: Config,
-    entityMaxIdleTime: Option[Duration]
+    entityMaxIdleTime: Option[Duration],
+    loadEntity: Req => Boolean
   ) extends EntityManager[Req] {
     private val gauge = Metrics.entities.tagged("type", recipientType.name)
 
@@ -105,32 +108,44 @@ private[shardcake] object EntityManager {
     ): IO[EntityNotManagedByThisPod, Unit] =
       for {
         // first, verify that this entity should be handled by this pod
-        _     <- recipientType match {
-                   case _: EntityType[_] =>
-                     ZIO.unlessZIO(sharding.isEntityOnLocalShards(recipientType, entityId))(
-                       ZIO.fail(EntityNotManagedByThisPod(entityId))
-                     )
-                   case _: TopicType[_]  => ZIO.unit
-                 }
+        _   <- recipientType match {
+                 case _: EntityType[_] =>
+                   ZIO.unlessZIO(sharding.isEntityOnLocalShards(recipientType, entityId))(
+                     ZIO.fail(EntityNotManagedByThisPod(entityId))
+                   )
+                 case _: TopicType[_]  => ZIO.unit
+               }
         // find the queue for that entity, or create it if needed
-        map   <- entities.get
-        queue <- map.get(entityId) match {
-                   case Some(queue @ Left(_)) => ZIO.succeed(queue)
-                   case _                     => getOrCreateQueue(entityId)
-                 }
-        _     <- queue match {
-                   case Right(_)    =>
-                     // the queue is shutting down, try again a little later
-                     Clock.sleep(100 millis) *> send(entityId, req, replyId, replyChannel)
-                   case Left(queue) =>
-                     currentTimeInMilliseconds.flatMap(cdt => entitiesLastReceivedAt.update(_ + (entityId -> cdt))) *>
-                       // add the message to the queue and setup the reply channel if needed
-                       (replyId match {
-                         case Some(replyId) => sharding.initReply(replyId, replyChannel) *> queue.offer(req)
-                         case None          => queue.offer(req) *> replyChannel.end
-                       }).catchAllCause(_ => Clock.sleep(100 millis) *> send(entityId, req, replyId, replyChannel))
-                 }
+        map <- entities.get
+        _   <- map.get(entityId) match {
+                 case Some(Left(queue))        =>
+                   offerToQueue(entityId, queue, req, replyId, replyChannel)
+                 case None if !loadEntity(req) =>
+                   replyChannel.end
+                 case _                        =>
+                   getOrCreateQueue(entityId).flatMap {
+                     case Right(_)    =>
+                       // the queue is shutting down, try again a little later
+                       Clock.sleep(100 millis) *> send(entityId, req, replyId, replyChannel)
+                     case Left(queue) =>
+                       offerToQueue(entityId, queue, req, replyId, replyChannel)
+                   }
+               }
       } yield ()
+
+    private def offerToQueue(
+      entityId: String,
+      queue: Queue[Req],
+      req: Req,
+      replyId: Option[String],
+      replyChannel: ReplyChannel[Nothing]
+    ): IO[EntityNotManagedByThisPod, Unit] =
+      currentTimeInMilliseconds.flatMap(cdt => entitiesLastReceivedAt.update(_ + (entityId -> cdt))) *>
+        // add the message to the queue and setup the reply channel if needed
+        (replyId match {
+          case Some(replyId) => sharding.initReply(replyId, replyChannel) <* queue.offer(req)
+          case None          => queue.offer(req) *> replyChannel.end
+        }).catchAllCause(_ => Clock.sleep(100 millis) *> send(entityId, req, replyId, replyChannel))
 
     private def getOrCreateQueue(entityId: String): IO[EntityNotManagedByThisPod, Either[Queue[Req], Signal]] =
       entities.modifyZIO(map =>
