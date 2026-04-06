@@ -141,8 +141,9 @@ private[shardcake] object EntityManager {
       replyChannel: ReplyChannel[Nothing]
     ): IO[EntityNotManagedByThisPod, Unit] =
       currentTimeInMilliseconds.flatMap(cdt => entitiesLastReceivedAt.update(_ + (entityId -> cdt))) *>
+        // add the message to the queue and setup the reply channel if needed
         (replyId match {
-          case Some(replyId) => sharding.initReply(replyId, replyChannel) *> queue.offer(req).unit
+          case Some(replyId) => sharding.initReply(replyId, replyChannel) <* queue.offer(req)
           case None          => queue.offer(req) *> replyChannel.end
         }).catchAllCause(_ => Clock.sleep(100 millis) *> send(entityId, req, replyId, replyChannel))
 
