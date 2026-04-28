@@ -171,7 +171,7 @@ lazy val grpcProtocol = project
       "com.thesamet.scalapb"          %% "scalapb-runtime"      % scalapb.compiler.Version.scalapbVersion % "protobuf",
       "com.thesamet.scalapb"          %% "scalapb-runtime-grpc" % scalapb.compiler.Version.scalapbVersion,
       "com.thesamet.scalapb.zio-grpc" %% "zio-grpc-core"        % zioGrpcVersion,
-      "io.grpc"                        % "grpc-netty"           % grpcNettyVersion
+      "io.grpc"                        % "grpc-netty"           % grpcNettyVersion                        % Test
     )
   )
 
@@ -187,7 +187,7 @@ lazy val examples = project
         "dev.zio" %% "zio-streams" % zioVersion
       )
   )
-  .dependsOn(manager, storageRedis, grpcProtocol, serializationKryo)
+  .dependsOn(manager, storageRedis, grpcProtocol % "compile->compile;test->test", serializationKryo)
 
 lazy val benchmarks = project
   .in(file("benchmarks"))
