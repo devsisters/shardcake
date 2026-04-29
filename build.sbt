@@ -184,10 +184,11 @@ lazy val examples = project
     libraryDependencies ++=
       Seq(
         "dev.zio" %% "zio"         % zioVersion,
-        "dev.zio" %% "zio-streams" % zioVersion
+        "dev.zio" %% "zio-streams" % zioVersion,
+        "io.grpc"  % "grpc-netty"  % grpcNettyVersion
       )
   )
-  .dependsOn(manager, storageRedis, grpcProtocol % "compile->compile;test->test", serializationKryo)
+  .dependsOn(manager, storageRedis, grpcProtocol, serializationKryo)
 
 lazy val benchmarks = project
   .in(file("benchmarks"))
