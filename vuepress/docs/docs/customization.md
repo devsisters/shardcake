@@ -197,5 +197,5 @@ libraryDependencies += "com.devsisters" %% "shardcake-health-k8s" % "2.7.1"
 You can then simply use the `K8sPodsHealth.live` layer. This is requiring a `Pods` layer that comes from [zio-k8s](https://coralogix.github.io/zio-k8s/docs/overview/overview_gettingstarted).
 
 ::: tip Examples
-Check the [examples](https://github.com/devsisters/shardcake/tree/series/2.x/examples/src/main/scala/example/complex) folder that contains a full example using Redis, gRPC and the Kryo message codec.
+Check the [examples](https://github.com/devsisters/shardcake/tree/series/3.x/examples/src/main/scala/example/complex) folder that contains a full example using Redis, gRPC and the Kryo message codec.
 :::
