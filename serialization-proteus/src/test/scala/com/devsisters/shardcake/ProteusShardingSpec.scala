@@ -77,11 +77,13 @@ object ProteusShardingSpec extends ZIOSpecDefault {
           _       <- Sharding.registerEntity(Counter, behavior)
           _       <- Sharding.registerScoped
           counter <- Sharding.messenger(Counter)
+          latch   <- Promise.make[Nothing, Unit]
           stream  <- counter.sendStreamAndReceiveStream[Count]("c1")(
                        StreamingChanges.apply,
-                       ZStream.fromIterable(List(IncrementCounter, IncrementCounter, DecrementCounter))
+                       ZStream.fromZIO(latch.await).drain ++
+                         ZStream.fromIterable(List(IncrementCounter, IncrementCounter, DecrementCounter))
                      )
-          items   <- stream.take(4).runCollect
+          items   <- stream.tap(_ => latch.succeed(())).take(4).runCollect
         } yield assertTrue(items.map(_.value) == Chunk(0, 1, 2, 1))
       }
     }
