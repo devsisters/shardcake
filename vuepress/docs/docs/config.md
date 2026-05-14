@@ -3,9 +3,19 @@
 ## Sharding Configuration
 
 Here's the list of thing you can configure on the pod side:
-- `numberOfShards`: number of shards
+- `role`: the role of the current pod (defaults to `Role.default`)
+::: tip Pod Roles
+A `Role` is a tag (a simple wrapper around a `String` name) attached to each pod. Pods with the same role share a pool of shards, while pods with different roles are managed independently by the Shard Manager (each role has its own set of shards, its own rebalancing, and its own assignment state).
+
+This is useful when you want to dedicate certain pods to certain entity types (e.g. a role for "game" pods and a role for "matchmaking" pods), or to scale parts of your system independently.
+
+If you don't need this, just leave the default value: all pods will share the `default` role.
+
+Note: a pod can only have one role, and a pod can't change its role while it's registered. Trying to re-register an existing pod with a different role will be rejected by the Shard Manager.
+:::
+- `numberOfShards`: number of shards (for the pod's role)
 ::: tip How to choose the number of shards?
-`numberOfShards` is used to calculate the shard ID from the entity ID. For that reason, it should be the same on all pods, and can not be changed while the app is running.
+`numberOfShards` is used to calculate the shard ID from the entity ID. For that reason, it should be the same on all pods of a given role, and can not be changed while the app is running.
 
 If this value is lower than the number of pods, some pods will have no shards (and host no entities), which is inefficient.
 If this value is too low, a difference of 1 shard between 2 pods will be quite significant and introduce some unbalance between the number of entities hosted on each pod.
@@ -41,7 +51,11 @@ Termination messages must contain a promise which you need to complete to indica
 ## Shard Manager Configuration
 
 Here's the list of thing you can configure on the Shard Manager side:
-- `numberOfShards`: number of shards (see above)
+- `numberOfShards`: a function `Role => Int` returning the number of shards for a given role (see above)
+::: tip Why a function?
+Because each role has its own pool of shards, you can pick a different number of shards for each role.
+If you only use the `default` role (or want the same number of shards everywhere), you can simply pass `_ => 300` (or any constant).
+:::
 - `apiPort`: port to expose the GraphQL API
 - `rebalanceInterval`: interval for regular rebalancing of shards
 - `rebalanceRetryInterval`: retry interval for rebalancing when some shards failed to be rebalanced

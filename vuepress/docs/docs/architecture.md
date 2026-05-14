@@ -27,6 +27,12 @@ The rest of the time, it does nothing since pods have a cached version of shard 
 That means they are able to work even if the Shard Manager is down.
 :::
 
+::: tip Pod Roles
+Each pod has a **role** (defaults to `default`). The Shard Manager manages each role independently: every role has its own set of shards, its own rebalancing, and its own assignment state.
+Messages can only be sent to entities that live on pods with the same role as the sender. This lets you dedicate certain pods to certain entity types or scale parts of your system independently.
+See [Configuration](config.md#sharding-configuration) for how to configure roles.
+:::
+
 ## Detailed flows
 
 ### Pod Start (`Sharding#register`)
