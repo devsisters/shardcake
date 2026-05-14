@@ -34,12 +34,15 @@ object StorageRedisSpec extends ZIOSpecDefault {
       } yield client
     }
 
+  private val role = Role.default
+
   def spec: Spec[TestEnvironment with Scope, Any] =
     suite("StorageRedisSpec")(
       test("save and get pods") {
-        val expected = List(Pod(PodAddress("host1", 1), "1.0.0"), Pod(PodAddress("host2", 2), "2.0.0"))
-          .map(p => p.address -> p)
-          .toMap
+        val expected =
+          List(Pod(PodAddress("host1", 1), "1.0.0", role), Pod(PodAddress("host2", 2), "2.0.0", role))
+            .map(p => p.address -> p)
+            .toMap
         for {
           _      <- ZIO.serviceWithZIO[Storage](_.savePods(expected))
           actual <- ZIO.serviceWithZIO[Storage](_.getPods)
@@ -48,17 +51,17 @@ object StorageRedisSpec extends ZIOSpecDefault {
       test("save and get assignments") {
         val expected = Map(1 -> Some(PodAddress("host1", 1)), 2 -> None)
         for {
-          _      <- ZIO.serviceWithZIO[Storage](_.saveAssignments(expected))
-          actual <- ZIO.serviceWithZIO[Storage](_.getAssignments)
+          _      <- ZIO.serviceWithZIO[Storage](_.saveAssignments(role, expected))
+          actual <- ZIO.serviceWithZIO[Storage](_.getAssignments(role))
         } yield assertTrue(expected == actual)
       },
       test("assignments stream") {
         val expected = Map(1 -> Some(PodAddress("host1", 1)), 2 -> None)
         for {
           p      <- Promise.make[Nothing, Map[Int, Option[PodAddress]]]
-          _      <- ZStream.serviceWithStream[Storage](_.assignmentsStream).runForeach(p.succeed(_)).fork
+          _      <- ZStream.serviceWithStream[Storage](_.assignmentsStream(role)).runForeach(p.succeed(_)).fork
           _      <- ClockLive.sleep(1 second)
-          _      <- ZIO.serviceWithZIO[Storage](_.saveAssignments(expected))
+          _      <- ZIO.serviceWithZIO[Storage](_.saveAssignments(role, expected))
           actual <- p.await
         } yield assertTrue(expected == actual)
       }

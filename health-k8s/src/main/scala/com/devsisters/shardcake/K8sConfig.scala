@@ -13,10 +13,10 @@ import zio._
 case class K8sConfig(
   cacheSize: Int,
   cacheDuration: Duration,
-  namespace: Option[K8sNamespace],
-  labelSelector: Option[LabelSelector]
+  namespace: Role => Option[K8sNamespace],
+  labelSelector: Role => Option[LabelSelector]
 )
 
 object K8sConfig {
-  val default: K8sConfig = K8sConfig(500, 3 seconds, None, None)
+  val default: K8sConfig = K8sConfig(500, 3 seconds, _ => None, _ => None)
 }

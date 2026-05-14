@@ -37,12 +37,12 @@ class Sharding private (
   val register: Task[Unit] =
     ZIO.logDebug(s"Registering pod $address to Shard Manager") *>
       isShuttingDownRef.set(false) *>
-      shardManager.register(address)
+      shardManager.register(address, config.role)
 
   val unregister: UIO[Unit] =
     (
       // ping the shard manager first to stop if it's not available
-      shardManager.getAssignments *>
+      shardManager.getAssignments(config.role) *>
         ZIO.logDebug(s"Stopping local entities") *>
         isShuttingDownRef.set(true) *>
         entityStates.get.flatMap(
@@ -63,33 +63,31 @@ class Sharding private (
 
   private def startSingletonsIfNeeded: UIO[Unit] =
     ZIO
-      .whenZIO(isSingletonNode) {
+      .whenZIODiscard(isSingletonNode) {
         singletons.updateZIO { singletons =>
           ZIO.foreach(singletons) {
             case (name, run, None) =>
               ZIO.logDebug(s"Starting singleton $name") *>
-                Metrics.singletons.tagged("singleton_name", name).increment *>
+                Metrics.singletons.tagged("role", config.role.name).tagged("singleton_name", name).increment *>
                 run.forkDaemon.map(fiber => (name, run, Some(fiber)))
             case other             => ZIO.succeed(other)
           }
         }
       }
-      .unit
 
   private def stopSingletonsIfNeeded: UIO[Unit] =
     ZIO
-      .unlessZIO(isSingletonNode) {
+      .unlessZIODiscard(isSingletonNode) {
         singletons.updateZIO { singletons =>
           ZIO.foreach(singletons) {
             case (name, run, Some(fiber)) =>
               ZIO.logDebug(s"Stopping singleton $name") *>
-                Metrics.singletons.tagged("singleton_name", name).decrement *>
+                Metrics.singletons.tagged("role", config.role.name).tagged("singleton_name", name).decrement *>
                 fiber.interrupt.as((name, run, None))
             case other                    => ZIO.succeed(other)
           }
         }
       }
-      .unit
 
   def registerSingleton[R](name: String, run: URIO[R, Nothing]): URIO[R, Unit] =
     ZIO.environment[R].flatMap(env => singletons.update(list => (name, run.provideEnvironment(env), None) :: list)) <*
@@ -100,25 +98,27 @@ class Sharding private (
     ZIO
       .unlessZIO(isShuttingDown) {
         shardAssignments.update(shards.foldLeft(_) { case (map, shard) => map.updated(shard, address) }) *>
-          Metrics.shards.incrementBy(shards.size) *>
+          Metrics.shards.tagged("role", config.role.name).incrementBy(shards.size) *>
           startSingletonsIfNeeded *>
           ZIO.logDebug(s"Assigned shards: ${renderShardIds(shards)}")
       }
       .unit
 
   private[shardcake] def unassign(shards: Set[ShardId]): UIO[Unit] =
-    shardAssignments.update(shards.foldLeft(_) { case (map, shard) =>
-      if (map.get(shard).contains(address)) map - shard else map
-    }) *>
+    shardAssignments.modify { map =>
+      val removed = shards.filter(s => map.get(s).contains(address))
+      (removed.size, map -- removed)
+    }.flatMap(removedCount =>
       ZIO.logDebug(s"Unassigning shards: ${renderShardIds(shards)}") *>
-      entityStates.get.flatMap(state =>
-        ZIO.foreachDiscard(state.values)(
-          _.entityManager.terminateEntitiesOnShards(shards) // this will return once all shards are terminated
-        )
-      ) *>
-      Metrics.shards.decrementBy(shards.size) *>
-      stopSingletonsIfNeeded *>
-      ZIO.logDebug(s"Unassigned shards: ${renderShardIds(shards)}")
+        entityStates.get.flatMap(state =>
+          ZIO.foreachDiscard(state.values)(
+            _.entityManager.terminateEntitiesOnShards(shards) // this will return once all shards are terminated
+          )
+        ) *>
+        Metrics.shards.tagged("role", config.role.name).decrementBy(removedCount) *>
+        stopSingletonsIfNeeded *>
+        ZIO.logDebug(s"Unassigned shards: ${renderShardIds(shards)}")
+    )
 
   def getPodAddress(recipientType: RecipientType[_], entityId: String): UIO[Option[PodAddress]] =
     for {
@@ -148,8 +148,9 @@ class Sharding private (
     val assignments = assignmentsOpt.flatMap { case (k, v) => v.map(k -> _) }
     ZIO.logDebug("Received new shard assignments") *>
       Metrics.shards
+        .tagged("role", config.role.name)
         .set(assignmentsOpt.count { case (_, podOpt) => podOpt.contains(address) })
-        .when(replaceAllAssignments) *>
+        .whenDiscard(replaceAllAssignments) *>
       (if (replaceAllAssignments) shardAssignments.set(assignments)
        else
          shardAssignments.update(map =>
@@ -165,12 +166,14 @@ class Sharding private (
       latch           <- Promise.make[Nothing, Unit]
       assignmentStream = ZStream.fromZIO(
                            // first, get the assignments from the shard manager directly
-                           shardManager.getAssignments.map(_ -> true)
+                           shardManager.getAssignments(config.role).map(_ -> true)
                          ) ++
                            // then, get assignments changes from Redis
-                           storage.assignmentsStream.map(_ -> false)
+                           storage.assignmentsStream(config.role).map(_ -> false)
       _               <- assignmentStream.mapZIO { case (assignmentsOpt, replaceAllAssignments) =>
-                           updateAssignments(assignmentsOpt, replaceAllAssignments) *> latch.succeed(()).when(replaceAllAssignments)
+                           updateAssignments(assignmentsOpt, replaceAllAssignments) *> latch
+                             .succeed(())
+                             .whenDiscard(replaceAllAssignments)
                          }.runDrain
                            .retry(Schedule.fixed(config.refreshAssignmentsRetryInterval))
                            .interruptible
@@ -242,9 +245,9 @@ class Sharding private (
       .modify(repliers => (repliers.get(replier.id), repliers - replier.id))
       .flatMap(ZIO.foreachDiscard(_)(_.asInstanceOf[ReplyChannel[Reply]].replyStream(replies)))
 
-  private def handleError(ex: Throwable): ZIO[Any, Nothing, Any] =
+  private def handleError(ex: Throwable): ZIO[Any, Nothing, Unit] =
     ZIO
-      .whenCase(ex) { case PodUnavailable(pod) =>
+      .whenCaseDiscard(ex) { case PodUnavailable(pod) =>
         val notify = Clock.currentDateTime.flatMap(cdt =>
           lastUnhealthyNodeReported
             .updateAndGet(old =>
@@ -253,7 +256,7 @@ class Sharding private (
             )
             .map(_ isEqual cdt)
         )
-        ZIO.whenZIO(notify)(shardManager.notifyUnhealthyPod(pod).forkDaemon)
+        ZIO.whenZIODiscard(notify)(shardManager.notifyUnhealthyPod(pod).forkDaemon)
       }
 
   private def sendToSelf[Msg, Res](

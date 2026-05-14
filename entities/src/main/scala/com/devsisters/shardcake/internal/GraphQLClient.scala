@@ -8,9 +8,8 @@ private[shardcake] object GraphQLClient {
 
   type Assignment
   object Assignment {
-    def shardId: SelectionBuilder[Assignment, Int]                                                       =
-      _root_.caliban.client.SelectionBuilder.Field("shardId", Scalar())
-    def pod[A](innerSelection: SelectionBuilder[PodAddress, A]): SelectionBuilder[Assignment, Option[A]] =
+    def shardId: SelectionBuilder[Assignment, Int]                                                             = _root_.caliban.client.SelectionBuilder.Field("shardId", Scalar())
+    def pod[A](innerSelection: SelectionBuilder[PodAddress, A]): SelectionBuilder[Assignment, scala.Option[A]] =
       _root_.caliban.client.SelectionBuilder.Field("pod", OptionOf(Obj(innerSelection)))
   }
 
@@ -20,10 +19,37 @@ private[shardcake] object GraphQLClient {
     def port: SelectionBuilder[PodAddress, Int]    = _root_.caliban.client.SelectionBuilder.Field("port", Scalar())
   }
 
+  type PodHealthChecked
+  object PodHealthChecked {
+    def pod[A](innerSelection: SelectionBuilder[PodAddress, A]): SelectionBuilder[PodHealthChecked, A] =
+      _root_.caliban.client.SelectionBuilder.Field("pod", Obj(innerSelection))
+  }
+
+  type PodRegistered
+  object PodRegistered {
+    def pod[A](innerSelection: SelectionBuilder[PodAddress, A]): SelectionBuilder[PodRegistered, A] =
+      _root_.caliban.client.SelectionBuilder.Field("pod", Obj(innerSelection))
+    def role[A](innerSelection: SelectionBuilder[Role, A]): SelectionBuilder[PodRegistered, A]      =
+      _root_.caliban.client.SelectionBuilder.Field("role", Obj(innerSelection))
+  }
+
+  type PodUnregistered
+  object PodUnregistered {
+    def pod[A](innerSelection: SelectionBuilder[PodAddress, A]): SelectionBuilder[PodUnregistered, A] =
+      _root_.caliban.client.SelectionBuilder.Field("pod", Obj(innerSelection))
+  }
+
+  type Role
+  object Role {
+    def name: SelectionBuilder[Role, String] = _root_.caliban.client.SelectionBuilder.Field("name", Scalar())
+  }
+
   type ShardsAssigned
   object ShardsAssigned {
     def pod[A](innerSelection: SelectionBuilder[PodAddress, A]): SelectionBuilder[ShardsAssigned, A] =
       _root_.caliban.client.SelectionBuilder.Field("pod", Obj(innerSelection))
+    def role[A](innerSelection: SelectionBuilder[Role, A]): SelectionBuilder[ShardsAssigned, A]      =
+      _root_.caliban.client.SelectionBuilder.Field("role", Obj(innerSelection))
     def shards: SelectionBuilder[ShardsAssigned, List[Int]]                                          =
       _root_.caliban.client.SelectionBuilder.Field("shards", ListOf(Scalar()))
   }
@@ -32,6 +58,8 @@ private[shardcake] object GraphQLClient {
   object ShardsUnassigned {
     def pod[A](innerSelection: SelectionBuilder[PodAddress, A]): SelectionBuilder[ShardsUnassigned, A] =
       _root_.caliban.client.SelectionBuilder.Field("pod", Obj(innerSelection))
+    def role[A](innerSelection: SelectionBuilder[Role, A]): SelectionBuilder[ShardsUnassigned, A]      =
+      _root_.caliban.client.SelectionBuilder.Field("role", Obj(innerSelection))
     def shards: SelectionBuilder[ShardsUnassigned, List[Int]]                                          =
       _root_.caliban.client.SelectionBuilder.Field("shards", ListOf(Scalar()))
   }
@@ -48,59 +76,81 @@ private[shardcake] object GraphQLClient {
         )
     }
   }
+  final case class RoleInput(name: String)
+  object RoleInput       {
+    implicit val encoder: ArgEncoder[RoleInput] = new ArgEncoder[RoleInput] {
+      override def encode(value: RoleInput): __Value =
+        __ObjectValue(List("name" -> implicitly[ArgEncoder[String]].encode(value.name)))
+    }
+  }
   type Queries = _root_.caliban.client.Operations.RootQuery
   object Queries         {
-    def getAssignments[A](
+    def getAssignments[A](role: String)(
       innerSelection: SelectionBuilder[Assignment, A]
-    ): SelectionBuilder[_root_.caliban.client.Operations.RootQuery, List[A]] =
-      _root_.caliban.client.SelectionBuilder.Field("getAssignments", ListOf(Obj(innerSelection)))
+    )(implicit encoder0: ArgEncoder[String]): SelectionBuilder[_root_.caliban.client.Operations.RootQuery, List[A]] =
+      _root_.caliban.client.SelectionBuilder.Field(
+        "getAssignments",
+        ListOf(Obj(innerSelection)),
+        arguments = List(Argument("role", role, "String!")(encoder0))
+      )
   }
 
   type Mutations = _root_.caliban.client.Operations.RootMutation
   object Mutations {
-    def register(address: PodAddressInput, version: String)(implicit
+    def register(address: PodAddressInput, version: String, role: RoleInput)(implicit
       encoder0: ArgEncoder[PodAddressInput],
-      encoder1: ArgEncoder[String]
-    ): SelectionBuilder[_root_.caliban.client.Operations.RootMutation, Option[Unit]] =
+      encoder1: ArgEncoder[String],
+      encoder2: ArgEncoder[RoleInput]
+    ): SelectionBuilder[_root_.caliban.client.Operations.RootMutation, scala.Option[Unit]] =
       _root_.caliban.client.SelectionBuilder.Field(
         "register",
         OptionOf(Scalar()),
         arguments = List(
           Argument("address", address, "PodAddressInput!")(encoder0),
-          Argument("version", version, "String!")(encoder1)
+          Argument("version", version, "String!")(encoder1),
+          Argument("role", role, "RoleInput!")(encoder2)
         )
       )
-    def unregister(address: PodAddressInput, version: String)(implicit
-      encoder0: ArgEncoder[PodAddressInput],
-      encoder1: ArgEncoder[String]
-    ): SelectionBuilder[_root_.caliban.client.Operations.RootMutation, Option[Unit]] =
+    def unregister(podAddress: PodAddressInput)(implicit
+      encoder0: ArgEncoder[PodAddressInput]
+    ): SelectionBuilder[_root_.caliban.client.Operations.RootMutation, scala.Option[Unit]] =
       _root_.caliban.client.SelectionBuilder.Field(
         "unregister",
         OptionOf(Scalar()),
-        arguments = List(
-          Argument("address", address, "PodAddressInput!")(encoder0),
-          Argument("version", version, "String!")(encoder1)
-        )
+        arguments = List(Argument("podAddress", podAddress, "PodAddressInput!")(encoder0))
       )
     def notifyUnhealthyPod(podAddress: PodAddressInput)(implicit
       encoder0: ArgEncoder[PodAddressInput]
-    ): SelectionBuilder[_root_.caliban.client.Operations.RootMutation, Unit] = _root_.caliban.client.SelectionBuilder
-      .Field(
+    ): SelectionBuilder[_root_.caliban.client.Operations.RootMutation, Unit] =
+      _root_.caliban.client.SelectionBuilder.Field(
         "notifyUnhealthyPod",
         Scalar(),
         arguments = List(Argument("podAddress", podAddress, "PodAddressInput!")(encoder0))
       )
+    def checkAllPodsHealth: SelectionBuilder[_root_.caliban.client.Operations.RootMutation, Unit] =
+      _root_.caliban.client.SelectionBuilder.Field("checkAllPodsHealth", Scalar())
   }
 
   type Subscriptions = _root_.caliban.client.Operations.RootSubscription
   object Subscriptions {
     def events[A](
+      onPodHealthChecked: SelectionBuilder[PodHealthChecked, A],
+      onPodRegistered: SelectionBuilder[PodRegistered, A],
+      onPodUnregistered: SelectionBuilder[PodUnregistered, A],
       onShardsAssigned: SelectionBuilder[ShardsAssigned, A],
       onShardsUnassigned: SelectionBuilder[ShardsUnassigned, A]
-    ): SelectionBuilder[_root_.caliban.client.Operations.RootSubscription, A] = _root_.caliban.client.SelectionBuilder
-      .Field(
+    ): SelectionBuilder[_root_.caliban.client.Operations.RootSubscription, A] =
+      _root_.caliban.client.SelectionBuilder.Field(
         "events",
-        ChoiceOf(Map("ShardsAssigned" -> Obj(onShardsAssigned), "ShardsUnassigned" -> Obj(onShardsUnassigned)))
+        ChoiceOf(
+          Map(
+            "PodHealthChecked" -> Obj(onPodHealthChecked),
+            "PodRegistered"    -> Obj(onPodRegistered),
+            "PodUnregistered"  -> Obj(onPodUnregistered),
+            "ShardsAssigned"   -> Obj(onShardsAssigned),
+            "ShardsUnassigned" -> Obj(onShardsUnassigned)
+          )
+        )
       )
   }
 

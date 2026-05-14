@@ -9,9 +9,10 @@ import zio.test._
 import java.time.OffsetDateTime
 
 object ShardManagerSpec extends ZIOSpecDefault {
-  private val pod1 = PodWithMetadata(Pod(PodAddress("1", 1), "1.0.0"), OffsetDateTime.MIN)
-  private val pod2 = PodWithMetadata(Pod(PodAddress("2", 2), "1.0.0"), OffsetDateTime.MIN)
-  private val pod3 = PodWithMetadata(Pod(PodAddress("3", 3), "1.0.0"), OffsetDateTime.MIN)
+  private val role = Role.default
+  private val pod1 = PodWithMetadata(Pod(PodAddress("1", 1), "1.0.0", role), OffsetDateTime.MIN)
+  private val pod2 = PodWithMetadata(Pod(PodAddress("2", 2), "1.0.0", role), OffsetDateTime.MIN)
+  private val pod3 = PodWithMetadata(Pod(PodAddress("3", 3), "1.0.0", role), OffsetDateTime.MIN)
 
   override def spec: Spec[Any, Throwable] =
     suite("ShardManagerSpec")(
@@ -20,13 +21,16 @@ object ShardManagerSpec extends ZIOSpecDefault {
           val state                        =
             ShardManagerState(
               pods = Map(pod1.pod.address -> pod1, pod2.pod.address -> pod2),
-              shards = Map(1 -> Some(pod1.pod.address), 2 -> Some(pod1.pod.address))
+              shards = Map(1 -> Some(pod1.pod.address), 2 -> Some(pod1.pod.address)),
+              numberOfShards = ManagerConfig.default.numberOfShards(role)
             )
           val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state, 1d)
-          assertTrue(assignments.contains(pod2.pod.address)) &&
-          assertTrue(assignments.size == 1) &&
-          assertTrue(unassignments.contains(pod1.pod.address)) &&
-          assertTrue(unassignments.size == 1)
+          assertTrue(
+            assignments.contains(pod2.pod.address),
+            assignments.size == 1,
+            unassignments.contains(pod1.pod.address),
+            unassignments.size == 1
+          )
         },
         test("Don't rebalance to pod with older version") {
           val state                        =
@@ -35,28 +39,31 @@ object ShardManagerSpec extends ZIOSpecDefault {
                 pod1.pod.address -> pod1,
                 pod2.pod.address -> pod2.copy(pod = pod2.pod.copy(version = "0.1.2"))
               ), // older version
-              shards = Map(1 -> Some(pod1.pod.address), 2 -> Some(pod1.pod.address))
+              shards = Map(1 -> Some(pod1.pod.address), 2 -> Some(pod1.pod.address)),
+              numberOfShards = ManagerConfig.default.numberOfShards(role)
             )
           val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state, 1d)
-          assertTrue(assignments.isEmpty) && assertTrue(unassignments.isEmpty)
+          assertTrue(assignments.isEmpty, unassignments.isEmpty)
         },
         test("Don't rebalance when already well balanced") {
           val state                        =
             ShardManagerState(
               pods = Map(pod1.pod.address -> pod1, pod2.pod.address -> pod2),
-              shards = Map(1 -> Some(pod1.pod.address), 2 -> Some(pod2.pod.address))
+              shards = Map(1 -> Some(pod1.pod.address), 2 -> Some(pod2.pod.address)),
+              numberOfShards = ManagerConfig.default.numberOfShards(role)
             )
           val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state, 1d)
-          assertTrue(assignments.isEmpty) && assertTrue(unassignments.isEmpty)
+          assertTrue(assignments.isEmpty, unassignments.isEmpty)
         },
         test("Don't rebalance when only 1 shard difference") {
           val state                        =
             ShardManagerState(
               pods = Map(pod1.pod.address -> pod1, pod2.pod.address -> pod2),
-              shards = Map(1 -> Some(pod1.pod.address), 2 -> Some(pod1.pod.address), 3 -> Some(pod2.pod.address))
+              shards = Map(1 -> Some(pod1.pod.address), 2 -> Some(pod1.pod.address), 3 -> Some(pod2.pod.address)),
+              numberOfShards = ManagerConfig.default.numberOfShards(role)
             )
           val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state, 1d)
-          assertTrue(assignments.isEmpty) && assertTrue(unassignments.isEmpty)
+          assertTrue(assignments.isEmpty, unassignments.isEmpty)
         },
         test("Rebalance when 2 shard difference") {
           val state                        =
@@ -67,51 +74,61 @@ object ShardManagerSpec extends ZIOSpecDefault {
                 2 -> Some(pod1.pod.address),
                 3 -> Some(pod1.pod.address),
                 4 -> Some(pod2.pod.address)
-              )
+              ),
+              numberOfShards = ManagerConfig.default.numberOfShards(role)
             )
           val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state, 1d)
-          assertTrue(assignments.contains(pod2.pod.address)) &&
-          assertTrue(assignments.size == 1) &&
-          assertTrue(unassignments.contains(pod1.pod.address)) &&
-          assertTrue(unassignments.size == 1)
+          assertTrue(
+            assignments.contains(pod2.pod.address),
+            assignments.size == 1,
+            unassignments.contains(pod1.pod.address),
+            unassignments.size == 1
+          )
         },
         test("Pick the pod with less shards") {
           val state                        =
             ShardManagerState(
               pods = Map(pod1.pod.address -> pod1, pod2.pod.address -> pod2, pod3.pod.address -> pod3),
-              shards = Map(1 -> Some(pod1.pod.address), 2 -> Some(pod1.pod.address), 3 -> Some(pod2.pod.address))
+              shards = Map(1 -> Some(pod1.pod.address), 2 -> Some(pod1.pod.address), 3 -> Some(pod2.pod.address)),
+              numberOfShards = ManagerConfig.default.numberOfShards(role)
             )
           val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state, 1d)
-          assertTrue(assignments.contains(pod3.pod.address)) &&
-          assertTrue(assignments.size == 1) &&
-          assertTrue(unassignments.contains(pod1.pod.address)) &&
-          assertTrue(unassignments.size == 1)
+          assertTrue(
+            assignments.contains(pod3.pod.address),
+            assignments.size == 1,
+            unassignments.contains(pod1.pod.address),
+            unassignments.size == 1
+          )
         },
         test("Don't rebalance if pod list is empty") {
           val state                        =
             ShardManagerState(
               pods = Map(),
-              shards = Map(1 -> Some(pod1.pod.address))
+              shards = Map(1 -> Some(pod1.pod.address)),
+              numberOfShards = ManagerConfig.default.numberOfShards(role)
             )
           val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(state, 1d)
-          assertTrue(assignments.isEmpty) && assertTrue(unassignments.isEmpty)
+          assertTrue(assignments.isEmpty, unassignments.isEmpty)
         },
         test("Balance well when 30 nodes are starting one by one") {
           val state =
             ShardManagerState(
               pods = Map(),
-              shards = (1 to 300).map(_ -> None).toMap
+              shards = (1 to 300).map(_ -> None).toMap,
+              numberOfShards = ManagerConfig.default.numberOfShards(role)
             )
 
           val result =
             (1 to 30).foldLeft(state) { case (state, podNumber) =>
               val podAddress                   = PodAddress("", podNumber)
               val s1                           = state.copy(pods =
-                state.pods.updated(podAddress, PodWithMetadata(Pod(podAddress, "v1"), OffsetDateTime.now()))
+                state.pods.updated(podAddress, PodWithMetadata(Pod(podAddress, "v1", role), OffsetDateTime.now()))
               )
               val (assignments, unassignments) = ShardManager.decideAssignmentsForUnbalancedShards(s1, 1d)
               val s2                           = unassignments.foldLeft(s1) { case (state, (_, shards)) =>
-                shards.foldLeft(state) { case (state, shard) => state.copy(shards = state.shards.updated(shard, None)) }
+                shards.foldLeft(state) { case (state, shard) =>
+                  state.copy(shards = state.shards.updated(shard, None))
+                }
               }
               val s3                           = assignments.foldLeft(s2) { case (state, (address, shards)) =>
                 shards.foldLeft(state) { case (state, shard) =>
@@ -130,23 +147,28 @@ object ShardManagerSpec extends ZIOSpecDefault {
         test("Simulate scaling out scenario") {
           (for {
             // setup 20 pods first
-            _           <- simulate((1 to 20).toList.map(i => SimulationEvent.PodRegister(Pod(PodAddress("server", i), "1"))))
+            _           <- simulate(
+                             (1 to 20).toList.map(i => SimulationEvent.PodRegister(Pod(PodAddress("server", i), "1", role)))
+                           )
             _           <- TestClock.adjust(10 minutes)
-            assignments <- ZIO.serviceWithZIO[ShardManager](_.getAssignments)
+            assignments <- ZIO.serviceWithZIO[ShardManager](_.getAssignments(role))
             // check that all pods are assigned and that all pods have 15 shards each
-            assert1      = assertTrue(assignments.values.forall(_.isDefined)) && assertTrue(
+            assert1      = assertTrue(
+                             assignments.values.forall(_.isDefined),
                              assignments.groupBy(_._2).forall(_._2.size == 15)
                            )
 
             // bring 5 new pods
-            _           <- simulate((21 to 25).toList.map(i => SimulationEvent.PodRegister(Pod(PodAddress("server", i), "1"))))
+            _           <- simulate(
+                             (21 to 25).toList.map(i => SimulationEvent.PodRegister(Pod(PodAddress("server", i), "1", role)))
+                           )
             _           <- TestClock.adjust(20 seconds)
-            assignments <- ZIO.serviceWithZIO[ShardManager](_.getAssignments)
+            assignments <- ZIO.serviceWithZIO[ShardManager](_.getAssignments(role))
             // check that new pods received some shards but only 6
             assert2      = assertTrue(assignments.groupBy(_._2).filter(_._1.exists(_.port > 20)).forall(_._2.size == 6))
 
             _           <- TestClock.adjust(1 minute)
-            assignments <- ZIO.serviceWithZIO[ShardManager](_.getAssignments)
+            assignments <- ZIO.serviceWithZIO[ShardManager](_.getAssignments(role))
             // check that all pods now have 12 shards each
             assert3      = assertTrue(assignments.groupBy(_._2).forall(_._2.size == 12))
 
@@ -155,20 +177,24 @@ object ShardManagerSpec extends ZIOSpecDefault {
         test("Simulate scaling down scenario") {
           (for {
             // setup 25 pods first
-            _           <- simulate((1 to 25).toList.map(i => SimulationEvent.PodRegister(Pod(PodAddress("server", i), "1"))))
+            _           <- simulate(
+                             (1 to 25).toList.map(i => SimulationEvent.PodRegister(Pod(PodAddress("server", i), "1", role)))
+                           )
             _           <- TestClock.adjust(10 minutes)
-            assignments <- ZIO.serviceWithZIO[ShardManager](_.getAssignments)
+            assignments <- ZIO.serviceWithZIO[ShardManager](_.getAssignments(role))
             // check that all pods are assigned and that all pods have 12 shards each
-            assert1      = assertTrue(assignments.values.forall(_.isDefined)) && assertTrue(
+            assert1      = assertTrue(
+                             assignments.values.forall(_.isDefined),
                              assignments.groupBy(_._2).forall(_._2.size == 12)
                            )
 
             // remove 5 pods
             _           <- simulate((21 to 25).toList.map(i => SimulationEvent.PodUnregister(PodAddress("server", i))))
             _           <- TestClock.adjust(1 second)
-            assignments <- ZIO.serviceWithZIO[ShardManager](_.getAssignments)
+            assignments <- ZIO.serviceWithZIO[ShardManager](_.getAssignments(role))
             // check that all shards have been rebalanced already
-            assert2      = assertTrue(assignments.values.forall(_.exists(_.port <= 20))) && assertTrue(
+            assert2      = assertTrue(
+                             assignments.values.forall(_.exists(_.port <= 20)),
                              assignments.groupBy(_._2).forall(_._2.size == 15)
                            )
 
@@ -177,21 +203,23 @@ object ShardManagerSpec extends ZIOSpecDefault {
         test("Simulate temporary storage restart followed by manager restart") {
           {
             val setup = (for {
-              _ <- simulate((1 to 10).toList.map(i => SimulationEvent.PodRegister(Pod(PodAddress("server", i), "1"))))
+              _ <- simulate {
+                     (1 to 10).toList.map(i => SimulationEvent.PodRegister(Pod(PodAddress("server", i), "1", role)))
+                   }
               _ <- TestClock.adjust(10 minutes)
               // busy wait for the forked daemon fibers to do their job
               _ <- ZIO.iterate(Map.empty[ShardId, Option[PodAddress]])(_.isEmpty)(_ =>
-                     ZIO.serviceWithZIO[Storage](_.getAssignments)
+                     ZIO.serviceWithZIO[Storage](_.getAssignments(role))
                    )
               _ <- ZIO.iterate(Map.empty[PodAddress, Pod])(_.isEmpty)(_ => ZIO.serviceWithZIO[Storage](_.getPods))
               // simulate non-persistent storage restart
-              _ <- ZIO.serviceWithZIO[Storage](s => s.saveAssignments(Map.empty) *> s.savePods(Map.empty))
+              _ <- ZIO.serviceWithZIO[Storage](s => s.saveAssignments(role, Map.empty) *> s.savePods(Map.empty))
             } yield {}).provideSome[Storage](
               ZLayer.makeSome[Storage, ShardManager](config, Pods.noop, PodsHealth.local, ShardManager.live)
             )
 
             val test = for {
-              shutdownAssignments <- ZIO.serviceWithZIO[Storage](_.getAssignments)
+              shutdownAssignments <- ZIO.serviceWithZIO[Storage](_.getAssignments(role))
               shutdownPods        <- ZIO.serviceWithZIO[Storage](_.getPods)
             } yield
             // manager should have saved its state to storage when it shut down
@@ -212,11 +240,11 @@ object ShardManagerSpec extends ZIOSpecDefault {
   val config: ULayer[ManagerConfig] = ZLayer.succeed(ManagerConfig.default)
 
   val storage: ULayer[Storage] = ZLayer.succeed(new Storage {
-    def getAssignments: Task[Map[ShardId, Option[PodAddress]]]                       = ZIO.succeed(Map.empty)
-    def saveAssignments(assignments: Map[ShardId, Option[PodAddress]]): Task[Unit]   = ZIO.unit
-    def assignmentsStream: ZStream[Any, Throwable, Map[ShardId, Option[PodAddress]]] = ZStream.empty
-    def getPods: Task[Map[PodAddress, Pod]]                                          = ZIO.succeed(Map.empty)
-    def savePods(pods: Map[PodAddress, Pod]): Task[Unit]                             = ZIO.unit
+    def getAssignments(role: Role): Task[Map[ShardId, Option[PodAddress]]]                       = ZIO.succeed(Map.empty)
+    def saveAssignments(role: Role, assignments: Map[ShardId, Option[PodAddress]]): Task[Unit]   = ZIO.unit
+    def assignmentsStream(role: Role): ZStream[Any, Throwable, Map[ShardId, Option[PodAddress]]] = ZStream.empty
+    def getPods: Task[Map[PodAddress, Pod]]                                                      = ZIO.succeed(Map.empty)
+    def savePods(pods: Map[PodAddress, Pod]): Task[Unit]                                         = ZIO.unit
   })
 
   val shardManager: ZLayer[Any, Throwable, ShardManager] =

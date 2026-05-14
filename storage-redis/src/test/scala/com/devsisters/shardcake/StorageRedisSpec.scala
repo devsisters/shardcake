@@ -1,13 +1,13 @@
 package com.devsisters.shardcake
 
-import com.devsisters.shardcake.StorageRedis.{ fs2Stream, Redis }
+import com.devsisters.shardcake.StorageRedis.Redis
 import com.devsisters.shardcake.interfaces.Storage
 import com.dimafeng.testcontainers.GenericContainer
+import dev.profunktor.redis4cats.Redis
 import dev.profunktor.redis4cats.connection.RedisClient
 import dev.profunktor.redis4cats.data.RedisCodec
 import dev.profunktor.redis4cats.effect.Log
-import dev.profunktor.redis4cats.pubsub.{ PubSub, PubSubCommands }
-import dev.profunktor.redis4cats.{ Redis, RedisCommands }
+import dev.profunktor.redis4cats.pubsub.PubSub
 import zio.Clock.ClockLive
 import zio._
 import zio.interop.catz._
@@ -49,12 +49,15 @@ object StorageRedisSpec extends ZIOSpecDefault {
         )
     }
 
+  private val role = Role.default
+
   def spec: Spec[TestEnvironment with Scope, Any] =
     suite("StorageRedisSpec")(
       test("save and get pods") {
-        val expected = List(Pod(PodAddress("host1", 1), "1.0.0"), Pod(PodAddress("host2", 2), "2.0.0"))
-          .map(p => p.address -> p)
-          .toMap
+        val expected =
+          List(Pod(PodAddress("host1", 1), "1.0.0", role), Pod(PodAddress("host2", 2), "2.0.0", role))
+            .map(p => p.address -> p)
+            .toMap
         for {
           _      <- ZIO.serviceWithZIO[Storage](_.savePods(expected))
           actual <- ZIO.serviceWithZIO[Storage](_.getPods)
@@ -63,17 +66,17 @@ object StorageRedisSpec extends ZIOSpecDefault {
       test("save and get assignments") {
         val expected = Map(1 -> Some(PodAddress("host1", 1)), 2 -> None)
         for {
-          _      <- ZIO.serviceWithZIO[Storage](_.saveAssignments(expected))
-          actual <- ZIO.serviceWithZIO[Storage](_.getAssignments)
+          _      <- ZIO.serviceWithZIO[Storage](_.saveAssignments(role, expected))
+          actual <- ZIO.serviceWithZIO[Storage](_.getAssignments(role))
         } yield assertTrue(expected == actual)
       },
       test("assignments stream") {
         val expected = Map(1 -> Some(PodAddress("host1", 1)), 2 -> None)
         for {
           p      <- Promise.make[Nothing, Map[Int, Option[PodAddress]]]
-          _      <- ZStream.serviceWithStream[Storage](_.assignmentsStream).runForeach(p.succeed(_)).fork
+          _      <- ZStream.serviceWithStream[Storage](_.assignmentsStream(role)).runForeach(p.succeed(_)).fork
           _      <- ClockLive.sleep(1 second)
-          _      <- ZIO.serviceWithZIO[Storage](_.saveAssignments(expected))
+          _      <- ZIO.serviceWithZIO[Storage](_.saveAssignments(role, expected))
           actual <- p.await
         } yield assertTrue(expected == actual)
       }
