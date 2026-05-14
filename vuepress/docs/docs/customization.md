@@ -14,15 +14,16 @@ It contains 5 methods: `getAssignments`/`saveAssignments` to store assignments, 
 
 ```scala
 trait Storage {
-  def getAssignments: Task[Map[ShardId, Option[PodAddress]]]
-  def saveAssignments(assignments: Map[ShardId, Option[PodAddress]]): Task[Unit]
-  
-  def assignmentsStream: ZStream[Any, Throwable, Map[Int, Option[PodAddress]]]
-  
+  def getAssignments(role: Role): Task[Map[ShardId, Option[PodAddress]]]
+  def saveAssignments(role: Role, assignments: Map[ShardId, Option[PodAddress]]): Task[Unit]
+
+  def assignmentsStream(role: Role): ZStream[Any, Throwable, Map[ShardId, Option[PodAddress]]]
+
   def getPods: Task[Map[PodAddress, Pod]]
   def savePods(pods: Map[PodAddress, Pod]): Task[Unit]
 }
 ```
+Assignments are stored per `Role`, since each role has its own independent set of shards.
 
 For testing, you can use the `Storage.memory` layer that keeps data in memory.
 
@@ -185,7 +186,7 @@ The `PodsHealth` trait defines how to know if a pod is still alive or is dead (i
 
 ```scala
 trait PodsHealth {
-  def isAlive(podAddress: PodAddress): UIO[Boolean]
+  def isAlive(pod: Pod): UIO[Boolean]
 }
 ```
 For testing, you can use the `PodsHealth.noop` layer that always returns true, or the `PodsHealth.local` layer that uses `ping` from the [Messaging Protocol](#messaging-protocol) to check if a pod is alive.

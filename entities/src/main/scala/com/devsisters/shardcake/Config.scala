@@ -6,6 +6,7 @@ import zio._
 
 /**
  * Sharding configuration
+ * @param role role of the current pod
  * @param numberOfShards number of shards (see documentation on how to choose this), should be same on all nodes
  * @param selfHost hostname or IP address of the current pod
  * @param shardingPort port used for pods to communicate together
@@ -20,6 +21,7 @@ import zio._
  * @param unregisterRetrySchedule retry schedule for unregistering the pod from the Shard Manager
  */
 case class Config(
+  role: Role,
   numberOfShards: Int,
   selfHost: String,
   shardingPort: Int,
@@ -36,6 +38,7 @@ case class Config(
 
 object Config {
   val default: Config = Config(
+    role = Role.default,
     numberOfShards = 300,
     selfHost = "localhost",
     shardingPort = 54321,

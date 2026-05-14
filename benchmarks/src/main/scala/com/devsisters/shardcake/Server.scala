@@ -26,24 +26,26 @@ object Server {
         pod     = PodAddress("localhost", config.shardingPort)
         shards  = (1 to config.numberOfShards).map(_ -> Some(pod)).toMap
       } yield new ShardManagerClient {
-        def register(podAddress: PodAddress): Task[Unit]           = ZIO.unit
-        def unregister(podAddress: PodAddress): Task[Unit]         = ZIO.unit
-        def notifyUnhealthyPod(podAddress: PodAddress): Task[Unit] = ZIO.unit
-        def getAssignments: Task[Map[Int, Option[PodAddress]]]     = ZIO.succeed(shards)
+        def register(podAddress: PodAddress, role: Role): Task[Unit]           = ZIO.unit
+        def unregister(podAddress: PodAddress): Task[Unit]                     = ZIO.unit
+        def notifyUnhealthyPod(podAddress: PodAddress): Task[Unit]             = ZIO.unit
+        def getAssignments(role: Role): Task[Map[ShardId, Option[PodAddress]]] = ZIO.succeed(shards)
       }
     }
 
   private val memory: ULayer[Storage] =
     ZLayer {
       for {
-        assignmentsRef <- Ref.make(Map.empty[ShardId, Option[PodAddress]])
+        assignmentsRef <- Ref.make(Map.empty[Role, Map[ShardId, Option[PodAddress]]])
         podsRef        <- Ref.make(Map.empty[PodAddress, Pod])
       } yield new Storage {
-        def getAssignments: Task[Map[ShardId, Option[PodAddress]]]                       = assignmentsRef.get
-        def saveAssignments(assignments: Map[ShardId, Option[PodAddress]]): Task[Unit]   = assignmentsRef.set(assignments)
-        def assignmentsStream: ZStream[Any, Throwable, Map[ShardId, Option[PodAddress]]] = ZStream.never
-        def getPods: Task[Map[PodAddress, Pod]]                                          = podsRef.get
-        def savePods(pods: Map[PodAddress, Pod]): Task[Unit]                             = podsRef.set(pods)
+        def getAssignments(role: Role): Task[Map[ShardId, Option[PodAddress]]]                       =
+          assignmentsRef.get.map(_.getOrElse(role, Map.empty))
+        def saveAssignments(role: Role, assignments: Map[ShardId, Option[PodAddress]]): Task[Unit]   =
+          assignmentsRef.update(_.updated(role, assignments))
+        def assignmentsStream(role: Role): ZStream[Any, Throwable, Map[ShardId, Option[PodAddress]]] = ZStream.never
+        def getPods: Task[Map[PodAddress, Pod]]                                                      = podsRef.get
+        def savePods(pods: Map[PodAddress, Pod]): Task[Unit]                                         = podsRef.set(pods)
       }
     }
 
