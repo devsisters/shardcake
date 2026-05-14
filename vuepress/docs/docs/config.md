@@ -30,7 +30,7 @@ This `serverVersion` allows the Shard Manager to know which pods are old and whi
 If no termination message is provided, the entity queues will simply be shutdown.
 But if you want to ensure entities are stopped "cleanly" after processing their last message, define a termination message and stop the behavior yourself (by calling `ZIO.interrupt`) after receiving that message.
 
-Termination messages must contain a promise which you need to complete to indicate that shutdown is complete. See the [example here](https://github.com/devsisters/shardcake/tree/series/2.x/examples/src/main/scala/example/complex).
+Termination messages must contain a promise which you need to complete to indicate that shutdown is complete. See the [example here](https://github.com/devsisters/shardcake/tree/series/3.x/examples/src/main/scala/example/complex).
 :::
 - `entityTerminationTimeout`: time we give to an entity to handle the termination message before interrupting it
 - `sendTimeout`: timeout when calling `sendMessage`

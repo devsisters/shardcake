@@ -12,7 +12,7 @@ import dev.profunktor.redis4cats.pubsub.PubSub
 import example.simple.GuildBehavior
 import example.simple.GuildBehavior.Guild
 import example.simple.GuildBehavior.GuildMessage.{ Join, Stream, Timeout }
-import sttp.client3.UriContext
+import sttp.client4.UriContext
 import zio.{ Config => _, _ }
 import zio.Clock.ClockLive
 import zio.interop.catz._

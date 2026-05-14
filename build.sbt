@@ -1,46 +1,45 @@
-val scala212 = "2.12.20"
-val scala213 = "2.13.16"
-val scala3   = "3.3.5"
+val scala212 = "2.12.21"
+val scala213 = "2.13.18"
+val scala3   = "3.3.7"
 val allScala = Seq(scala212, scala213, scala3)
 
-val zioVersion            = "2.1.16"
+val zioVersion            = "2.1.24"
 val zioGrpcVersion        = "0.6.3"
 val grpcNettyVersion      = "1.71.0"
-val zioK8sVersion         = "3.1.0"
+val zioK8sVersion         = "3.2.0"
+val zioK8sSttpVersion     = "3.11.0"
 val zioCacheVersion       = "0.2.4"
 val zioCatsInteropVersion = "23.1.0.5"
 val zioJsonVersion        = "0.7.39"
-val sttpVersion           = "3.10.3"
-val calibanVersion        = "2.10.0"
-val redis4catsVersion     = "1.7.2"
+val sttpVersion           = "4.0.13"
+val calibanVersion        = "3.0.0"
+val redis4catsVersion     = "2.0.1"
 val redissonVersion       = "3.45.1"
-val scalaKryoVersion      = "1.2.1"
-val testContainersVersion = "0.43.0"
+val scalaKryoVersion      = "1.4.0"
+val testContainersVersion = "0.44.1"
 val scalaCompatVersion    = "2.13.0"
 
 inThisBuild(
   List(
-    scalaVersion           := scala213,
-    crossScalaVersions     := allScala,
-    organization           := "com.devsisters",
-    homepage               := Some(url("https://devsisters.github.io/shardcake/")),
-    licenses               := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
-    scmInfo                := Some(
+    scalaVersion       := scala213,
+    crossScalaVersions := allScala,
+    organization       := "com.devsisters",
+    homepage           := Some(url("https://devsisters.github.io/shardcake/")),
+    licenses           := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
+    scmInfo            := Some(
       ScmInfo(
         url("https://github.com/devsisters/shardcake"),
         "scm:git:git@github.com:devsisters/shardcake.git"
       )
     ),
-    developers             := List(
+    developers         := List(
       Developer(
         "ghostdogpr",
         "Pierre Ricadat",
         "ghostdogpr@gmail.com",
         url("https://github.com/ghostdogpr")
       )
-    ),
-    sonatypeRepository     := "https://s01.oss.sonatype.org/service/local",
-    sonatypeCredentialHost := "s01.oss.sonatype.org"
+    )
   )
 )
 
@@ -99,8 +98,8 @@ lazy val entities = project
   .settings(
     libraryDependencies ++=
       Seq(
-        "com.github.ghostdogpr"         %% "caliban-client"                % calibanVersion,
-        "com.softwaremill.sttp.client3" %% "async-http-client-backend-zio" % sttpVersion
+        "com.github.ghostdogpr"         %% "caliban-client" % calibanVersion,
+        "com.softwaremill.sttp.client4" %% "zio"            % sttpVersion
       )
   )
 
@@ -112,10 +111,10 @@ lazy val healthK8s = project
   .settings(
     libraryDependencies ++=
       Seq(
-        "com.coralogix"                 %% "zio-k8s-client"                % zioK8sVersion,
-        "dev.zio"                       %% "zio-cache"                     % zioCacheVersion,
-        "com.softwaremill.sttp.client3" %% "async-http-client-backend-zio" % sttpVersion,
-        "com.softwaremill.sttp.client3" %% "slf4j-backend"                 % sttpVersion
+        "com.coralogix"                 %% "zio-k8s-client" % zioK8sVersion,
+        "dev.zio"                       %% "zio-cache"      % zioCacheVersion,
+        "com.softwaremill.sttp.client3" %% "zio"            % zioK8sSttpVersion,
+        "com.softwaremill.sttp.client3" %% "slf4j-backend"  % zioK8sSttpVersion
       )
   )
 
@@ -205,7 +204,6 @@ lazy val protobuf = Seq(
 ) ++ Project.inConfig(Test)(sbtprotoc.ProtocPlugin.protobufConfigSettings)
 
 lazy val commonSettings = Def.settings(
-  resolvers ++= Resolver.sonatypeOssRepos("snapshots"),
   testFrameworks := Seq(new TestFramework("zio.test.sbt.ZTestFramework")),
   libraryDependencies ++=
     Seq(

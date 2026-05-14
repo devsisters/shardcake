@@ -28,7 +28,7 @@ For testing, you can use the `Storage.memory` layer that keeps data in memory.
 
 Shardcake provides an implementation of `Storage` using Redis with the Redis4cats library (there's also an alternative using Redisson). To use it, add the following dependency:
 ```scala
-libraryDependencies += "com.devsisters" %% "shardcake-storage-redis" % "2.5.1"
+libraryDependencies += "com.devsisters" %% "shardcake-storage-redis" % "2.7.1"
 ```
 You can then simply use the `StorageRedis.live` layer.
 
@@ -85,7 +85,7 @@ For testing, you can use the `Pods.noop` layer that does nothing.
 
 Shardcake provides an implementation of `Pods` using the gRPC protocol. To use it, add the following dependency:
 ```scala
-libraryDependencies += "com.devsisters" %% "shardcake-protocol-grpc" % "2.5.1"
+libraryDependencies += "com.devsisters" %% "shardcake-protocol-grpc" % "2.7.1"
 ```
 You can then simply use the `GrpcPods.live` layer.
 
@@ -106,7 +106,7 @@ For testing, you can use the `Serialization.javaSerialization` layer that uses J
 
 Shardcake provides an implementation of `Serialization` using the [Kryo](https://github.com/EsotericSoftware/kryo) binary serialization library. To use it, add the following dependency:
 ```scala
-libraryDependencies += "com.devsisters" %% "shardcake-serialization-kryo" % "2.5.1"
+libraryDependencies += "com.devsisters" %% "shardcake-serialization-kryo" % "2.7.1"
 ```
 You can then simply use the `KryoSerialization.live` layer.
 
@@ -131,10 +131,10 @@ For testing, you can use the `PodsHealth.noop` layer that always returns true, o
 
 Shardcake provides an implementation of `PodsHealth` using the [Kubernetes](https://kubernetes.io) API. To use it, add the following dependency:
 ```scala
-libraryDependencies += "com.devsisters" %% "shardcake-health-k8s" % "2.5.1"
+libraryDependencies += "com.devsisters" %% "shardcake-health-k8s" % "2.7.1"
 ```
 You can then simply use the `K8sPodsHealth.live` layer. This is requiring a `Pods` layer that comes from [zio-k8s](https://coralogix.github.io/zio-k8s/docs/overview/overview_gettingstarted).
 
 ::: tip Examples
-Check the [examples](https://github.com/devsisters/shardcake/tree/series/2.x/examples/src/main/scala/example/complex) folder that contains a full example using Redis, gRPC and Kryo seralization.
+Check the [examples](https://github.com/devsisters/shardcake/tree/series/3.x/examples/src/main/scala/example/complex) folder that contains a full example using Redis, gRPC and Kryo seralization.
 :::

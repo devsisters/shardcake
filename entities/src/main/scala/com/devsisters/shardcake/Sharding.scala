@@ -2,7 +2,7 @@ package com.devsisters.shardcake
 
 import com.devsisters.shardcake.Messenger.MessengerTimeout
 import com.devsisters.shardcake.Sharding.{ EntityState, ShardingRegistrationEvent }
-import com.devsisters.shardcake.errors.{ EntityNotManagedByThisPod, PodUnavailable, SendTimeoutException }
+import com.devsisters.shardcake.errors._
 import com.devsisters.shardcake.interfaces.Pods.BinaryMessage
 import com.devsisters.shardcake.interfaces.{ Pods, Serialization, Storage }
 import com.devsisters.shardcake.internal.{ EntityManager, ReplyChannel, SendChannel }
@@ -47,7 +47,7 @@ class Sharding private (
         isShuttingDownRef.set(true) *>
         entityStates.get.flatMap(
           ZIO.foreachParDiscard(_) { case (name, entity) =>
-            entity.entityManager.terminateAllEntities.forkDaemon // run in a daemon fiber to make sure it doesn't get interrupted
+            entity.entityManager.terminateAllEntities.interruptible.forkDaemon // run in a daemon fiber to make sure it doesn't get interrupted
               .flatMap(_.join)
               .catchAllCause(ZIO.logErrorCause(s"Error during stop of entity $name", _))
           }
@@ -118,12 +118,15 @@ class Sharding private (
       stopSingletonsIfNeeded *>
       ZIO.logDebug(s"Unassigned shards: ${renderShardIds(shards)}")
 
-  private[shardcake] def isEntityOnLocalShards(recipientType: RecipientType[_], entityId: String): UIO[Boolean] =
+  def getPodAddress(recipientType: RecipientType[_], entityId: String): UIO[Option[PodAddress]] =
     for {
       shards <- shardAssignments.get
       shardId = getShardId(recipientType, entityId)
       pod     = shards.get(shardId)
-    } yield pod.contains(address)
+    } yield pod
+
+  def isEntityOnLocalShards(recipientType: RecipientType[_], entityId: String): UIO[Boolean] =
+    getPodAddress(recipientType, entityId).map(pod => pod.contains(address))
 
   val getAssignments: UIO[Map[ShardId, PodAddress]] =
     shardAssignments.get
@@ -407,7 +410,8 @@ class Sharding private (
                       }
           } yield ()
 
-        trySend
+        if (shardId >= 1 && shardId <= config.numberOfShards) trySend
+        else ZIO.fail(InvalidShardId(entityId, shardId))
       }
 
       private def sendStreamGeneric[Res](
@@ -439,7 +443,8 @@ class Sharding private (
                       }
           } yield ()
 
-        trySend
+        if (shardId >= 1 && shardId <= config.numberOfShards) trySend
+        else ZIO.fail(InvalidShardId(entityId, shardId))
       }
     }
 
@@ -502,15 +507,18 @@ class Sharding private (
     entityType: EntityType[Req],
     behavior: (String, Queue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
-    entityMaxIdleTime: Option[Duration] = None
-  ): URIO[Scope with R, Unit] = registerRecipient(entityType, behavior, terminateMessage, entityMaxIdleTime) *>
-    eventsHub.publish(ShardingRegistrationEvent.EntityRegistered(entityType)).unit
+    entityMaxIdleTime: Option[Duration] = None,
+    loadEntity: Req => Boolean = (_: Req) => true
+  ): URIO[Scope with R, Unit] =
+    registerRecipient(entityType, behavior, terminateMessage, entityMaxIdleTime, loadEntity) *>
+      eventsHub.publish(ShardingRegistrationEvent.EntityRegistered(entityType)).unit
 
   def registerTopic[R, Req: Tag](
     topicType: TopicType[Req],
     behavior: (String, Queue[Req]) => RIO[R, Nothing],
-    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
-  ): URIO[Scope with R, Unit] = registerRecipient(topicType, behavior, terminateMessage) *>
+    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
+    loadEntity: Req => Boolean = (_: Req) => true
+  ): URIO[Scope with R, Unit] = registerRecipient(topicType, behavior, terminateMessage, None, loadEntity) *>
     eventsHub.publish(ShardingRegistrationEvent.TopicRegistered(topicType)).unit
 
   def getShardingRegistrationEvents: ZStream[Any, Nothing, ShardingRegistrationEvent] =
@@ -520,10 +528,19 @@ class Sharding private (
     recipientType: RecipientType[Req],
     behavior: (String, Queue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
-    entityMaxIdleTime: Option[Duration] = None
+    entityMaxIdleTime: Option[Duration],
+    loadEntity: Req => Boolean
   ): URIO[Scope with R, Unit] =
     for {
-      entityManager <- EntityManager.make(recipientType, behavior, terminateMessage, self, config, entityMaxIdleTime)
+      entityManager <- EntityManager.make(
+                         recipientType,
+                         behavior,
+                         terminateMessage,
+                         self,
+                         config,
+                         entityMaxIdleTime,
+                         loadEntity
+                       )
       processBinary  = (msg: BinaryMessage, replyChannel: ReplyChannel[Nothing]) =>
                          serialization
                            .decode[Req](msg.body)
@@ -644,27 +661,35 @@ object Sharding {
    * It takes a `behavior` which is a function from an entity ID and a queue of messages to a ZIO computation that runs forever and consumes those messages.
    * You can use `ZIO.interrupt` from the behavior to stop it (it will be restarted the next time the entity receives a message).
    * If provided, the optional `terminateMessage` will be sent to the entity before it is stopped, allowing for cleanup logic.
+   * If provided, `loadEntity` is a predicate that determines whether a new entity should be created for an incoming message.
+   * When it returns `false` and the entity doesn't already exist, the message is discarded. Defaults to always creating the entity.
    */
   def registerEntity[R, Req: Tag](
     entityType: EntityType[Req],
     behavior: (String, Queue[Req]) => RIO[R, Nothing],
     terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
-    entityMaxIdleTime: Option[Duration] = None
+    entityMaxIdleTime: Option[Duration] = None,
+    loadEntity: Req => Boolean = (_: Req) => true
   ): URIO[Sharding with Scope with R, Unit] =
-    ZIO.serviceWithZIO[Sharding](_.registerEntity[R, Req](entityType, behavior, terminateMessage, entityMaxIdleTime))
+    ZIO.serviceWithZIO[Sharding](
+      _.registerEntity[R, Req](entityType, behavior, terminateMessage, entityMaxIdleTime, loadEntity)
+    )
 
   /**
    * Register a new topic type, allowing pods to broadcast messages to subscribers.
    * It takes a `behavior` which is a function from a topic and a queue of messages to a ZIO computation that runs forever and consumes those messages.
    * You can use `ZIO.interrupt` from the behavior to stop it (it will be restarted the next time the topic receives a message).
    * If provided, the optional `terminateMessage` will be sent to the topic before it is stopped, allowing for cleanup logic.
+   * If provided, `loadEntity` is a predicate that determines whether a new entity should be created for an incoming message.
+   * When it returns `false` and the entity doesn't already exist, the message is discarded. Defaults to always creating the entity.
    */
   def registerTopic[R, Req: Tag](
     topicType: TopicType[Req],
     behavior: (String, Queue[Req]) => RIO[R, Nothing],
-    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None
+    terminateMessage: Promise[Nothing, Unit] => Option[Req] = (_: Promise[Nothing, Unit]) => None,
+    loadEntity: Req => Boolean = (_: Req) => true
   ): URIO[Sharding with Scope with R, Unit] =
-    ZIO.serviceWithZIO[Sharding](_.registerTopic[R, Req](topicType, behavior, terminateMessage))
+    ZIO.serviceWithZIO[Sharding](_.registerTopic[R, Req](topicType, behavior, terminateMessage, loadEntity))
 
   /**
    * Get an object that allows sending messages to a given entity type.

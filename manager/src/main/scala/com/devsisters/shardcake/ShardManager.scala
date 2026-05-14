@@ -48,7 +48,7 @@ class ShardManager(
         _                <- ManagerMetrics.pods.tagged("role", pod.role.name).increment
         _                <- eventsHub.publish(ShardingEvent.PodRegistered(pod))
         _                <- ZIO.whenDiscard(triggerRebalance)(rebalance(pod.role, rebalanceImmediately = false).forkDaemon)
-        _                <- persistPods.forkDaemon
+        _                <- persistPods
       } yield (),
       onFalse = ZIO.logWarning(s"Pod $pod requested to register but is not alive, ignoring") *>
         ZIO.fail(new RuntimeException(s"Pod $pod is not healthy, refusing to register"))
@@ -207,14 +207,15 @@ class ShardManager(
         _                                             <- (Clock.sleep(config.rebalanceRetryInterval) *> rebalance(role, rebalanceImmediately)).forkDaemon
                                                            .when(failedPods.nonEmpty && rebalanceImmediately)
         // persist state changes to Redis
-        _                                             <- persistAssignments(role).forkDaemon.when(areChanges)
+        _                                             <- persistAssignments(role).when(areChanges)
       } yield ()
     })
 
-  private def withRetry[E, A](zio: IO[E, A]): UIO[Unit] =
+  private def withRetry[A](zio: Task[A]): UIO[Unit] =
     zio
       .retry[Any, Any](Schedule.spaced(config.persistRetryInterval) && Schedule.recurs(config.persistRetryCount))
-      .ignore
+      .orDie
+      .unit
 
   private def persistAssignments(role: Role): UIO[Unit] =
     withRetry(
@@ -354,7 +355,7 @@ object ShardManager {
                                      ZIO.logWarningCause("Failed to persist pods on shutdown", cause)
                                    )
                                }
-        _                   <- shardManager.persistPods.forkDaemon
+        _                   <- shardManager.persistPods
         // rebalance immediately if there are unassigned shards
         _                   <- ZIO.foreachDiscard(initialStates) { case (role, state) =>
                                  shardManager.rebalance(role, rebalanceImmediately = state.unassignedShards.nonEmpty).forkDaemon

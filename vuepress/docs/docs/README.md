@@ -79,8 +79,8 @@ The first thing we need to do is starting the Shard Manager. This component is a
 To make it simpler and run our example without 3rd parties, we're going to run a simple `PodsHealth` implementation that just pings a pod to see if it's alive, and in-memory `Storage`.
 We need a proper messaging protocol to communicate with pods, so we're going to use `shardcake-protocol-grpc`.
 ```
-libraryDependencies += "com.devsisters" %% "shardcake-manager"       % "2.5.1"
-libraryDependencies += "com.devsisters" %% "shardcake-protocol-grpc" % "2.5.1"
+libraryDependencies += "com.devsisters" %% "shardcake-manager"       % "2.7.1"
+libraryDependencies += "com.devsisters" %% "shardcake-protocol-grpc" % "2.7.1"
 ```
 The Shard Manager exposes a small GraphQL API, which means we need to start a small webserver. This can be done by calling `Server.run` and providing all the required dependencies.
 ```scala
@@ -107,8 +107,8 @@ We now need to define our **entity behavior**: what kind of messages can our ent
 
 First, we need the following dependencies:
 ```
-libraryDependencies += "com.devsisters" %% "shardcake-entities"      % "2.5.1"
-libraryDependencies += "com.devsisters" %% "shardcake-protocol-grpc" % "2.5.1"
+libraryDependencies += "com.devsisters" %% "shardcake-entities"      % "2.7.1"
+libraryDependencies += "com.devsisters" %% "shardcake-protocol-grpc" % "2.7.1"
 ```
 
 Let's start with defining the messages our entities can receive. We will have 2: one for joining a guild and one for leaving.
@@ -231,8 +231,8 @@ The only changes we would need to make would be:
 - to use an actual `Storage` implementation for sharding (e.g. Redis)
 - to save our guild state somewhere instead of in memory, so that we don't lose this state if the guild entity is moved from one pod to another
 
-The running code for this example [can be found here](https://github.com/devsisters/shardcake/tree/series/2.x/examples/src/main/scala/example/simple), 
-as well as [a more complex example](https://github.com/devsisters/shardcake/tree/series/2.x/examples/src/main/scala/example/complex) using Redis to persist data and where you can run multiple pods.
+The running code for this example [can be found here](https://github.com/devsisters/shardcake/tree/series/3.x/examples/src/main/scala/example/simple), 
+as well as [a more complex example](https://github.com/devsisters/shardcake/tree/series/3.x/examples/src/main/scala/example/complex) using Redis to persist data and where you can run multiple pods.
 
 To understand how Sharding works under the hood, have a look at the [Architecture](architecture.md) section.
 The [Configuration](config.md) section explains how to configure the sharding system.

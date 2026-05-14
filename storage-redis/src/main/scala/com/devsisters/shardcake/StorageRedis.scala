@@ -13,7 +13,7 @@ import scala.collection.compat._
 
 object StorageRedis {
   type fs2Stream[A] = fs2.Stream[Task, A]
-  type Redis        = RedisCommands[Task, String, String] with PubSubCommands[fs2Stream, String, String]
+  type Redis        = RedisCommands[Task, String, String] with PubSubCommands[Task, fs2Stream, String, String]
 
   /**
    * A layer that returns a Storage implementation using Redis
@@ -23,7 +23,7 @@ object StorageRedis {
       for {
         config       <- ZIO.service[RedisConfig]
         stringClient <- ZIO.service[RedisCommands[Task, String, String]]
-        pubSubClient <- ZIO.service[PubSubCommands[fs2Stream, String, String]]
+        pubSubClient <- ZIO.service[PubSubCommands[Task, fs2Stream, String, String]]
       } yield new Storage {
         def getAssignments(role: Role): Task[Map[ShardId, Option[PodAddress]]] =
           stringClient
