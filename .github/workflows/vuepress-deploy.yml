@@ -1,12 +1,14 @@
 name: Build and Deploy Docs
 
 on:
-  push:
-    branches: ['series/2.x']
+  release:
+    types: [published]
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    if: github.event.release.target_commitish == 'series/2.x' || github.ref == 'refs/heads/series/2.x'
     steps:
       - name: Checkout
         uses: actions/checkout@v6
