@@ -105,18 +105,20 @@ class Sharding private (
       .unit
 
   private[shardcake] def unassign(shards: Set[ShardId]): UIO[Unit] =
-    shardAssignments.update(shards.foldLeft(_) { case (map, shard) =>
-      if (map.get(shard).contains(address)) map - shard else map
-    }) *>
+    shardAssignments.modify { map =>
+      val removed = shards.filter(s => map.get(s).contains(address))
+      (removed.size, map -- removed)
+    }.flatMap(removedCount =>
       ZIO.logDebug(s"Unassigning shards: ${renderShardIds(shards)}") *>
-      entityStates.get.flatMap(state =>
-        ZIO.foreachDiscard(state.values)(
-          _.entityManager.terminateEntitiesOnShards(shards) // this will return once all shards are terminated
-        )
-      ) *>
-      Metrics.shards.tagged("role", config.role.name).decrementBy(shards.size) *>
-      stopSingletonsIfNeeded *>
-      ZIO.logDebug(s"Unassigned shards: ${renderShardIds(shards)}")
+        entityStates.get.flatMap(state =>
+          ZIO.foreachDiscard(state.values)(
+            _.entityManager.terminateEntitiesOnShards(shards) // this will return once all shards are terminated
+          )
+        ) *>
+        Metrics.shards.tagged("role", config.role.name).decrementBy(removedCount) *>
+        stopSingletonsIfNeeded *>
+        ZIO.logDebug(s"Unassigned shards: ${renderShardIds(shards)}")
+    )
 
   def getPodAddress(recipientType: RecipientType[_], entityId: String): UIO[Option[PodAddress]] =
     for {

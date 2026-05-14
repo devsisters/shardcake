@@ -34,16 +34,20 @@ class ShardManager(
     ZIO.ifZIO(healthApi.isAlive(pod))(
       onTrue = for {
         _                <- ZIO.logInfo(s"Registering $pod")
-        _                <- ZIO.whenZIO(stateRef.get.map(_.exists { case (role, state) =>
-                              state.pods.get(pod.address).exists(_ => role != pod.role)
-                            }))(ZIO.fail(new RuntimeException(s"Pod $pod is already registered with a different role")))
         cdt              <- ZIO.succeed(OffsetDateTime.now())
-        triggerRebalance <- stateRef.modify { states =>
-                              val previous =
-                                states.getOrElse(pod.role, ShardManagerState(config.numberOfShards(pod.role)))
-                              val state    =
-                                previous.copy(pods = previous.pods.updated(pod.address, PodWithMetadata(pod, cdt)))
-                              (state.unassignedShards.nonEmpty, states.updated(pod.role, state))
+        triggerRebalance <- stateRef.modifyZIO { states =>
+                              val existingRole = states.collectFirst {
+                                case (role, state) if state.pods.contains(pod.address) => role
+                              }
+                              if (existingRole.exists(_ != pod.role)) {
+                                ZIO.fail(new RuntimeException(s"Pod $pod is already registered with a different role"))
+                              } else {
+                                val previous =
+                                  states.getOrElse(pod.role, ShardManagerState(config.numberOfShards(pod.role)))
+                                val state    =
+                                  previous.copy(pods = previous.pods.updated(pod.address, PodWithMetadata(pod, cdt)))
+                                ZIO.succeed((state.unassignedShards.nonEmpty, states.updated(pod.role, state)))
+                              }
                             }
         _                <- ManagerMetrics.pods.tagged("role", pod.role.name).increment
         _                <- eventsHub.publish(ShardingEvent.PodRegistered(pod))
@@ -55,11 +59,7 @@ class ShardManager(
     )
 
   private def findPod(podAddress: PodAddress): UIO[Option[Pod]] =
-    stateRef.get
-      .map(_.values.collectFirst {
-        case state if state.pods.contains(podAddress) => state.pods.get(podAddress).map(_.pod)
-      })
-      .map(_.flatten)
+    stateRef.get.map(_.values.iterator.flatMap(_.pods.get(podAddress)).map(_.pod).nextOption())
 
   def notifyUnhealthyPod(podAddress: PodAddress, ignoreMetric: Boolean = false): UIO[Unit] =
     ZIO
