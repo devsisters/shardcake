@@ -84,7 +84,7 @@ private[shardcake] object GraphQLClient {
       )
     def notifyUnhealthyPod(podAddress: PodAddressInput)(implicit
       encoder0: ArgEncoder[PodAddressInput]
-    ): SelectionBuilder[_root_.caliban.client.Operations.RootMutation, Unit] = _root_.caliban.client.SelectionBuilder
+    ): SelectionBuilder[_root_.caliban.client.Operations.RootMutation, Unit]         = _root_.caliban.client.SelectionBuilder
       .Field(
         "notifyUnhealthyPod",
         Scalar(),

@@ -4,8 +4,8 @@ import com.devsisters.shardcake.Messenger.MessengerTimeout
 import com.devsisters.shardcake.Sharding.{ EntityState, ShardingRegistrationEvent }
 import com.devsisters.shardcake.errors._
 import com.devsisters.shardcake.interfaces.Pods.BinaryMessage
-import com.devsisters.shardcake.interfaces.{ Pods, Serialization, Storage }
-import com.devsisters.shardcake.internal.{ EntityManager, ReplyChannel, SendChannel }
+import com.devsisters.shardcake.interfaces.{ MessageCodec, Pods, Storage }
+import com.devsisters.shardcake.internal.{ EntityManager, PendingReply, ReplyChannel, SendChannel }
 import zio.{ Config => _, _ }
 import zio.stream.ZStream
 
@@ -22,16 +22,15 @@ class Sharding private (
   shardAssignments: Ref[Map[ShardId, PodAddress]],
   entityStates: Ref[Map[String, EntityState]],
   singletons: Ref.Synchronized[List[(String, UIO[Nothing], Option[Fiber[Nothing, Nothing]])]],
-  replyChannels: Ref[Map[String, ReplyChannel[Nothing]]], // channel for each pending reply,
+  pendingReplies: Ref[Map[String, PendingReply]],
   lastUnhealthyNodeReported: Ref[OffsetDateTime],
   isShuttingDownRef: Ref[Boolean],
   shardManager: ShardManagerClient,
   pods: Pods,
   storage: Storage,
-  serialization: Serialization,
   eventsHub: Hub[ShardingRegistrationEvent]
 ) { self =>
-  private[shardcake] def getShardId(recipientType: RecipientType[_], entityId: String): ShardId =
+  private[shardcake] def getShardId(recipientType: RecipientType[?], entityId: String): ShardId =
     recipientType.getShardId(entityId, config.numberOfShards)
 
   val register: Task[Unit] =
@@ -120,14 +119,14 @@ class Sharding private (
       stopSingletonsIfNeeded *>
       ZIO.logDebug(s"Unassigned shards: ${renderShardIds(shards)}")
 
-  def getPodAddress(recipientType: RecipientType[_], entityId: String): UIO[Option[PodAddress]] =
+  def getPodAddress(recipientType: RecipientType[?], entityId: String): UIO[Option[PodAddress]] =
     for {
       shards <- shardAssignments.get
       shardId = getShardId(recipientType, entityId)
       pod     = shards.get(shardId)
     } yield pod
 
-  def isEntityOnLocalShards(recipientType: RecipientType[_], entityId: String): UIO[Boolean] =
+  def isEntityOnLocalShards(recipientType: RecipientType[?], entityId: String): UIO[Boolean] =
     getPodAddress(recipientType, entityId).map(pod => pod.contains(address))
 
   val getAssignments: UIO[Map[ShardId, PodAddress]] =
@@ -184,28 +183,26 @@ class Sharding private (
 
   def sendToLocalEntity(msg: BinaryMessage): Task[Option[Array[Byte]]] =
     for {
-      replyChannel <- ReplyChannel.single[Any]
+      replyChannel <- ReplyChannel.single[Array[Byte]]
       _            <- sendToLocalEntity(msg, replyChannel)
       res          <- replyChannel.output
-      bytes        <- ZIO.foreach(res)(serialization.encode)
-    } yield bytes
+    } yield res
 
   def sendToLocalEntityAndReceiveStream(msg: BinaryMessage): ZStream[Any, Throwable, Array[Byte]] =
     ZStream.unwrap {
       for {
-        replyChannel <- ReplyChannel.stream[Any]
+        replyChannel <- ReplyChannel.stream[Array[Byte]]
         _            <- sendToLocalEntity(msg, replyChannel)
-      } yield replyChannel.output.mapChunksZIO(serialization.encodeChunk)
+      } yield replyChannel.output
     }
 
   def sendStreamToLocalEntity(messages: ZStream[Any, Throwable, BinaryMessage]): Task[Option[Array[Byte]]] =
     ZIO.scoped {
       for {
-        replyChannel <- ReplyChannel.single[Any]
+        replyChannel <- ReplyChannel.single[Array[Byte]]
         _            <- messages.runForeach(sendToLocalEntity(_, replyChannel)).onError(replyChannel.fail).forkScoped
         res          <- replyChannel.output
-        bytes        <- ZIO.foreach(res)(serialization.encode)
-      } yield bytes
+      } yield res
     }
 
   def sendStreamToLocalEntityAndReceiveStream(
@@ -213,34 +210,50 @@ class Sharding private (
   ): ZStream[Any, Throwable, Array[Byte]] =
     ZStream.unwrapScoped {
       for {
-        replyChannel <- ReplyChannel.stream[Any]
+        replyChannel <- ReplyChannel.stream[Array[Byte]]
         _            <- messages.runForeach(sendToLocalEntity(_, replyChannel)).onError(replyChannel.fail).forkScoped
-      } yield replyChannel.output.mapChunksZIO(serialization.encodeChunk)
+      } yield replyChannel.output
     }
 
-  private def sendToLocalEntity(msg: BinaryMessage, replyChannel: ReplyChannel[Nothing]): Task[Unit] =
+  private def sendToLocalEntity(msg: BinaryMessage, replyChannel: ReplyChannel[Array[Byte]]): Task[Unit] =
     entityStates.get.flatMap(_.get(msg.entityType) match {
       case Some(state) => state.processBinary(msg, replyChannel).unit
       case None        => ZIO.fail(new Exception(s"Entity type ${msg.entityType} was not registered."))
     })
 
-  private[shardcake] def initReply(id: String, replyChannel: ReplyChannel[Nothing]): UIO[Unit] =
-    replyChannels
-      .getAndUpdate(_.updated(id, replyChannel))
-      .flatMap(beforeReplyChannels =>
-        replyChannel.await.ensuring(replyChannels.update(_ - id)).forkDaemon.unless(beforeReplyChannels.contains(id))
+  private[shardcake] def initReply(id: String, pendingReply: PendingReply): UIO[Unit] =
+    pendingReplies
+      .getAndUpdate(_.updated(id, pendingReply))
+      .flatMap(beforePendingReplies =>
+        pendingReply.await.ensuring(pendingReplies.update(_ - id)).forkDaemon.unless(beforePendingReplies.contains(id))
       )
       .unit
 
   def reply[Reply](reply: Reply, replier: Replier[Reply]): UIO[Unit] =
-    replyChannels
+    pendingReplies
       .modify(repliers => (repliers.get(replier.id), repliers - replier.id))
-      .flatMap(ZIO.foreachDiscard(_)(_.asInstanceOf[ReplyChannel[Reply]].replySingle(reply)))
+      .flatMap {
+        case None                                      => ZIO.unit
+        case Some(PendingReply.Value(channel))         =>
+          channel.asInstanceOf[ReplyChannel[Reply]].replySingle(reply)
+        case Some(PendingReply.Bytes(channel, encode)) =>
+          ZIO
+            .attempt(encode(reply))
+            .foldCauseZIO(channel.fail, channel.replySingle)
+      }
 
   def replyStream[Reply](replies: ZStream[Any, Nothing, Reply], replier: StreamReplier[Reply]): UIO[Unit] =
-    replyChannels
+    pendingReplies
       .modify(repliers => (repliers.get(replier.id), repliers - replier.id))
-      .flatMap(ZIO.foreachDiscard(_)(_.asInstanceOf[ReplyChannel[Reply]].replyStream(replies)))
+      .flatMap {
+        case None                                      => ZIO.unit
+        case Some(PendingReply.Value(channel))         =>
+          channel.asInstanceOf[ReplyChannel[Reply]].replyStream(replies)
+        case Some(PendingReply.Bytes(channel, encode)) =>
+          channel.replyStream(
+            replies.mapZIO(r => ZIO.attempt(encode(r)))
+          )
+      }
 
   private def handleError(ex: Throwable): ZIO[Any, Nothing, Any] =
     ZIO
@@ -267,7 +280,9 @@ class Sharding private (
     entityStates.get.flatMap(
       _.get(recipientTypeName) match {
         case Some(state) =>
-          state.entityManager.asInstanceOf[EntityManager[Msg]].send(entityId, msg, replyId, replyChannel)
+          state.entityManager
+            .asInstanceOf[EntityManager[Msg]]
+            .send(entityId, msg, replyId, PendingReply.Value(replyChannel))
         case None        =>
           ZIO.fail(new Exception(s"Entity type $recipientTypeName was not registered."))
       }
@@ -277,6 +292,8 @@ class Sharding private (
     recipientTypeName: String,
     entityId: String,
     pod: PodAddress,
+    codec: MessageCodec[Msg],
+    replyDecoder: Array[Byte] => Res,
     sendChannel: SendChannel[Msg],
     replyChannel: ReplyChannel[Res],
     replyId: Option[String]
@@ -284,25 +301,25 @@ class Sharding private (
     if (pod == address && !config.simulateRemotePods) {
       val run = sendChannel.foreach(sendToSelf(recipientTypeName, entityId, _, replyId, replyChannel))
       sendChannel match {
-        case _: SendChannel.Single[_] => run
-        case _: SendChannel.Stream[_] => if (replyId.isDefined) (run race replyChannel.await).fork.unit else run
+        case _: SendChannel.Single[?] => run
+        case _: SendChannel.Stream[?] => if (replyId.isDefined) (run race replyChannel.await).fork.unit else run
       }
     } else {
       replyChannel match {
-        case _: ReplyChannel.FromPromise[_] =>
+        case _: ReplyChannel.FromPromise[?] =>
           sendChannel
-            .send(pods, serialization, pod, entityId, recipientTypeName, replyId)
+            .send(pods, codec, pod, entityId, recipientTypeName, replyId)
             .tapError(handleError)
             .flatMap {
-              case Some(bytes) => serialization.decode[Res](bytes).flatMap(replyChannel.replySingle)
+              case Some(bytes) => ZIO.attempt(replyDecoder(bytes)).flatMap(replyChannel.replySingle)
               case None        => replyChannel.end
             }
-        case _: ReplyChannel.FromQueue[_]   =>
+        case _: ReplyChannel.FromQueue[?]   =>
           replyChannel.replyStream(
             sendChannel
-              .sendAndReceiveStream(pods, serialization, pod, entityId, recipientTypeName, replyId)
+              .sendAndReceiveStream(pods, codec, pod, entityId, recipientTypeName, replyId)
               .tapError(handleError)
-              .mapChunksZIO(serialization.decodeChunk[Res])
+              .mapChunksZIO(chunk => ZIO.attempt(chunk.map(replyDecoder)))
           )
       }
     }
@@ -312,6 +329,7 @@ class Sharding private (
     sendTimeout: MessengerTimeout = MessengerTimeout.InheritConfigTimeout
   ): Messenger[Msg] =
     new Messenger[Msg] {
+      private val codec   = entityType.codec
       private val timeout = sendTimeout match {
         case MessengerTimeout.NoTimeout            => None
         case MessengerTimeout.InheritConfigTimeout => Some(config.sendTimeout)
@@ -319,14 +337,15 @@ class Sharding private (
       }
 
       def sendDiscard(entityId: String)(msg: Msg): Task[Unit] = {
-        val send = sendMessage(entityId, msg, None)
+        val send = sendMessage(entityId, msg, None, _ => ())
         timeout.fold(send.unit)(t => send.timeout(t).unit)
       }
 
-      def send[Res](entityId: String)(msg: Replier[Res] => Msg): Task[Res] =
+      def send[Res](entityId: String)(build: Replier[Res] => Msg): Task[Res] =
         Random.nextUUID.flatMap { uuid =>
-          val body = msg(Replier(uuid.toString))
-          val send = sendMessage[Res](entityId, body, Some(uuid.toString)).flatMap {
+          val body    = build(Replier(uuid.toString))
+          val decoder = codec.replyDecoder[Res](body)
+          val send    = sendMessage[Res](entityId, body, Some(uuid.toString), decoder).flatMap {
             case Some(value) => ZIO.succeed(value)
             case None        => ZIO.fail(new Exception(s"Send returned nothing, entityId=$entityId, body=$body"))
           }
@@ -335,112 +354,107 @@ class Sharding private (
 
       def sendAndReceiveStream[Res](
         entityId: String
-      )(msg: StreamReplier[Res] => Msg): Task[ZStream[Any, Throwable, Res]] =
+      )(build: StreamReplier[Res] => Msg): Task[ZStream[Any, Throwable, Res]] =
         Random.nextUUID.flatMap { uuid =>
-          sendMessageAndReceiveStream[Res](entityId, msg(StreamReplier(uuid.toString)), Some(uuid.toString))
+          val body    = build(StreamReplier(uuid.toString))
+          val decoder = codec.streamReplyDecoder[Res](body)
+          sendMessageAndReceiveStream[Res](entityId, body, Some(uuid.toString), decoder)
         }
 
       def sendStream(entityId: String)(messages: ZStream[Any, Throwable, Msg]): Task[Unit] = {
-        val send =
-          ReplyChannel.single[Unit].flatMap[Any, Throwable, Unit](sendStreamGeneric(entityId, messages, None, _))
+        val send = ReplyChannel.single[Unit].flatMap(sendStreamGeneric(entityId, messages, None, _, _ => ()))
         timeout.fold(send)(t => send.timeout(t).unit)
       }
 
-      def sendStreamAndReceiveStream[Res](entityId: String)(
-        messages: StreamReplier[Res] => ZStream[Any, Throwable, Msg]
-      ): Task[ZStream[Any, Throwable, Res]] =
+      def sendStreamAndReceiveStream[Res](
+        entityId: String
+      )(request: StreamReplier[Res] => Msg, rest: ZStream[Any, Throwable, Msg]): Task[ZStream[Any, Throwable, Res]] =
         Random.nextUUID.flatMap { uuid =>
-          sendStreamAndReceiveStream[Res](entityId, messages(StreamReplier(uuid.toString)), Some(uuid.toString))
+          val head       = request(StreamReplier(uuid.toString))
+          val decoder    = codec.streamReplyDecoder[Res](head)
+          val fullStream = ZStream(head) ++ rest
+          sendStreamAndReceiveStream[Res](entityId, fullStream, Some(uuid.toString), decoder)
         }
 
-      private def sendMessage[Res](entityId: String, msg: Msg, replyId: Option[String]): Task[Option[Res]] =
+      private def sendMessage[Res](
+        entityId: String,
+        msg: Msg,
+        replyId: Option[String],
+        replyDecoder: Array[Byte] => Res
+      ): Task[Option[Res]] =
         for {
           replyChannel <- ReplyChannel.single[Res]
-          _            <- sendMessageGeneric(entityId, msg, replyId, replyChannel)
+          _            <- sendMessageGeneric(entityId, msg, replyId, replyChannel, replyDecoder)
           res          <- replyChannel.output
         } yield res
 
       private def sendMessageAndReceiveStream[Res](
         entityId: String,
         msg: Msg,
-        replyId: Option[String]
+        replyId: Option[String],
+        replyDecoder: Array[Byte] => Res
       ): Task[ZStream[Any, Throwable, Res]] =
         for {
           replyChannel <- ReplyChannel.stream[Res]
-          _            <- sendMessageGeneric(entityId, msg, replyId, replyChannel)
+          _            <- sendMessageGeneric(entityId, msg, replyId, replyChannel, replyDecoder)
         } yield replyChannel.output
 
       private def sendStreamAndReceiveStream[Res](
         entityId: String,
         messages: ZStream[Any, Throwable, Msg],
-        replyId: Option[String]
+        replyId: Option[String],
+        replyDecoder: Array[Byte] => Res
       ): Task[ZStream[Any, Throwable, Res]] =
         for {
           replyChannel <- ReplyChannel.stream[Res]
-          _            <- sendStreamGeneric(entityId, messages, replyId, replyChannel)
+          _            <- sendStreamGeneric(entityId, messages, replyId, replyChannel, replyDecoder)
         } yield replyChannel.output
 
       private def sendMessageGeneric[Res](
         entityId: String,
         msg: Msg,
         replyId: Option[String],
-        replyChannel: ReplyChannel[Res]
-      ): Task[Unit] = {
-        val shardId             = getShardId(entityType, entityId)
-        def trySend: Task[Unit] =
-          for {
-            shards <- shardAssignments.get
-            pod     = shards.get(shardId)
-            _      <- pod match {
-                        case Some(pod) =>
-                          sendToPod[Msg, Res](
-                            entityType.name,
-                            entityId,
-                            pod,
-                            SendChannel.single(msg),
-                            replyChannel,
-                            replyId
-                          ).catchSome { case _: EntityNotManagedByThisPod | _: PodUnavailable =>
-                            Clock.sleep(200.millis) *> trySend
-                          }.onError(replyChannel.fail)
-                        case None      =>
-                          // no shard assignment, retry
-                          Clock.sleep(100.millis) *> trySend
-                      }
-          } yield ()
-
-        if (shardId >= 1 && shardId <= config.numberOfShards) trySend
-        else ZIO.fail(InvalidShardId(entityId, shardId))
-      }
+        replyChannel: ReplyChannel[Res],
+        replyDecoder: Array[Byte] => Res
+      ): Task[Unit] =
+        sendGeneric(entityId, SendChannel.single(msg), replyId, replyChannel, replyDecoder)
 
       private def sendStreamGeneric[Res](
         entityId: String,
         messages: ZStream[Any, Throwable, Msg],
         replyId: Option[String],
-        replyChannel: ReplyChannel[Res]
+        replyChannel: ReplyChannel[Res],
+        replyDecoder: Array[Byte] => Res
+      ): Task[Unit] =
+        sendGeneric(entityId, SendChannel.stream(messages), replyId, replyChannel, replyDecoder)
+
+      private def sendGeneric[Res](
+        entityId: String,
+        sendChannel: SendChannel[Msg],
+        replyId: Option[String],
+        replyChannel: ReplyChannel[Res],
+        replyDecoder: Array[Byte] => Res
       ): Task[Unit] = {
         val shardId             = getShardId(entityType, entityId)
         def trySend: Task[Unit] =
-          for {
-            shards <- shardAssignments.get
-            pod     = shards.get(shardId)
-            _      <- pod match {
-                        case Some(pod) =>
-                          sendToPod[Msg, Res](
-                            entityType.name,
-                            entityId,
-                            pod,
-                            SendChannel.stream(messages),
-                            replyChannel,
-                            replyId
-                          ).catchSome { case _: EntityNotManagedByThisPod | _: PodUnavailable =>
-                            Clock.sleep(200.millis) *> trySend
-                          }.onError(replyChannel.fail)
-                        case None      =>
-                          // no shard assignment, retry
-                          Clock.sleep(100.millis) *> trySend
-                      }
-          } yield ()
+          shardAssignments.get.map(_.get(shardId)).flatMap {
+            case Some(pod) =>
+              sendToPod[Msg, Res](
+                entityType.name,
+                entityId,
+                pod,
+                codec,
+                replyDecoder,
+                sendChannel,
+                replyChannel,
+                replyId
+              ).catchSome { case _: EntityNotManagedByThisPod | _: PodUnavailable =>
+                Clock.sleep(200.millis) *> trySend
+              }.onError(replyChannel.fail)
+            case None      =>
+              // no shard assignment, retry
+              Clock.sleep(100.millis) *> trySend
+          }
 
         if (shardId >= 1 && shardId <= config.numberOfShards) trySend
         else ZIO.fail(InvalidShardId(entityId, shardId))
@@ -452,6 +466,7 @@ class Sharding private (
     sendTimeout: MessengerTimeout = MessengerTimeout.InheritConfigTimeout
   ): Broadcaster[Msg] =
     new Broadcaster[Msg] {
+      private val codec   = topicType.codec
       private val timeout = sendTimeout match {
         case MessengerTimeout.NoTimeout            => None
         case MessengerTimeout.InheritConfigTimeout => Some(config.sendTimeout)
@@ -459,15 +474,21 @@ class Sharding private (
       }
 
       def broadcastDiscard(topic: String)(msg: Msg): UIO[Unit] =
-        sendMessage(topic, msg, None).unit
+        sendMessage(topic, msg, None, _ => ()).unit
 
-      def broadcast[Res](topic: String)(msg: Replier[Res] => Msg): UIO[Map[PodAddress, Try[Res]]] =
+      def broadcast[Res](topic: String)(build: Replier[Res] => Msg): UIO[Map[PodAddress, Try[Res]]] =
         Random.nextUUID.flatMap { uuid =>
-          val body = msg(Replier(uuid.toString))
-          sendMessage[Res](topic, body, Some(uuid.toString)).interruptible
+          val body    = build(Replier(uuid.toString))
+          val decoder = codec.replyDecoder[Res](body)
+          sendMessage[Res](topic, body, Some(uuid.toString), decoder).interruptible
         }
 
-      private def sendMessage[Res](topic: String, msg: Msg, replyId: Option[String]): UIO[Map[PodAddress, Try[Res]]] =
+      private def sendMessage[Res](
+        topic: String,
+        msg: Msg,
+        replyId: Option[String],
+        replyDecoder: Array[Byte] => Res
+      ): UIO[Map[PodAddress, Try[Res]]] =
         for {
           pods <- getPods
           res  <- ZIO
@@ -475,10 +496,12 @@ class Sharding private (
                       def trySend: Task[Option[Res]] =
                         for {
                           replyChannel <- ReplyChannel.single[Res]
-                          _            <- sendToPod(
+                          _            <- sendToPod[Msg, Res](
                                             topicType.name,
                                             topic,
                                             pod,
+                                            codec,
+                                            replyDecoder,
                                             SendChannel.single(msg),
                                             replyChannel,
                                             replyId
@@ -540,15 +563,25 @@ class Sharding private (
                          entityMaxIdleTime,
                          loadEntity
                        )
-      processBinary  = (msg: BinaryMessage, replyChannel: ReplyChannel[Nothing]) =>
-                         serialization
-                           .decode[Req](msg.body)
-                           .flatMap(entityManager.send(msg.entityId, _, msg.replyId, replyChannel))
+      processBinary  = (msg: BinaryMessage, replyChannel: ReplyChannel[Array[Byte]]) =>
+                         ZIO
+                           .attempt(recipientType.codec.decodeMessage(msg.body))
+                           .flatMap { decoded =>
+                             val encoder =
+                               if (msg.replyId.isDefined) recipientType.codec.replyEncoder(decoded)
+                               else Sharding.noReplyEncoder
+                             entityManager.send(
+                               msg.entityId,
+                               decoded,
+                               msg.replyId,
+                               PendingReply.Bytes(replyChannel, encoder)
+                             )
+                           }
                            .catchAllCause(replyChannel.fail)
       _             <- entityStates.update(_.updated(recipientType.name, EntityState(entityManager, processBinary)))
     } yield ()
 
-  def terminateLocalEntity(entityType: EntityType[_], entityId: String): UIO[Unit] =
+  def terminateLocalEntity(entityType: EntityType[?], entityId: String): UIO[Unit] =
     entityStates.get.flatMap(_.get(entityType.name) match {
       case Some(state) => state.entityManager.terminateEntity(entityId)
       case None        => ZIO.unit
@@ -560,33 +593,34 @@ object Sharding {
   sealed trait ShardingRegistrationEvent
 
   object ShardingRegistrationEvent {
-    case class EntityRegistered(entityType: EntityType[_]) extends ShardingRegistrationEvent {
+    case class EntityRegistered(entityType: EntityType[?]) extends ShardingRegistrationEvent {
       override def toString: String = s"Registered entity ${entityType.name}"
     }
     case class SingletonRegistered(name: String)           extends ShardingRegistrationEvent {
       override def toString: String = s"Registered singleton $name"
     }
-    case class TopicRegistered(topicType: TopicType[_])    extends ShardingRegistrationEvent {
+    case class TopicRegistered(topicType: TopicType[?])    extends ShardingRegistrationEvent {
       override def toString: String = s"Registered topic ${topicType.name}"
     }
   }
 
   private[shardcake] case class EntityState(
     entityManager: EntityManager[Nothing],
-    processBinary: (BinaryMessage, ReplyChannel[Nothing]) => UIO[Unit]
+    processBinary: (BinaryMessage, ReplyChannel[Array[Byte]]) => UIO[Unit]
   )
+
+  private val noReplyEncoder: Any => Array[Byte] = _ => Array.emptyByteArray
 
   /**
    * A layer that sets up sharding communication between pods.
    */
-  val live: ZLayer[Pods with ShardManagerClient with Storage with Serialization with Config, Throwable, Sharding] =
+  val live: ZLayer[Pods with ShardManagerClient with Storage with Config, Throwable, Sharding] =
     ZLayer.scoped {
       for {
         config                    <- ZIO.service[Config]
         pods                      <- ZIO.service[Pods]
         shardManager              <- ZIO.service[ShardManagerClient]
         storage                   <- ZIO.service[Storage]
-        serialization             <- ZIO.service[Serialization]
         shardsCache               <- Ref.make(Map.empty[ShardId, PodAddress])
         entityStates              <- Ref.make[Map[String, EntityState]](Map())
         singletons                <- Ref.Synchronized
@@ -599,7 +633,7 @@ object Sharding {
                                            }
                                          )
                                        )
-        replyChannels             <- Ref.make[Map[String, ReplyChannel[Nothing]]](Map())
+        pendingReplies            <- Ref.make[Map[String, PendingReply]](Map())
         cdt                       <- Clock.currentDateTime
         lastUnhealthyNodeReported <- Ref.make(cdt)
         shuttingDown              <- Ref.make(false)
@@ -610,13 +644,12 @@ object Sharding {
                                        shardsCache,
                                        entityStates,
                                        singletons,
-                                       replyChannels,
+                                       pendingReplies,
                                        lastUnhealthyNodeReported,
                                        shuttingDown,
                                        shardManager,
                                        pods,
                                        storage,
-                                       serialization,
                                        eventsHub
                                      )
         _                         <- sharding.getShardingRegistrationEvents.mapZIO(event => ZIO.logInfo(event.toString)).runDrain.forkDaemon
@@ -736,6 +769,6 @@ object Sharding {
    * This method can only be used if the entity is hosted on the current pod (otherwise it will do nothing).
    * Typically, you would use this method from inside the entity behavior to stop itself.
    */
-  def terminateLocalEntity(entityType: EntityType[_], entityId: String): URIO[Sharding, Unit] =
+  def terminateLocalEntity(entityType: EntityType[?], entityId: String): URIO[Sharding, Unit] =
     ZIO.serviceWithZIO[Sharding](_.terminateLocalEntity(entityType, entityId))
 }

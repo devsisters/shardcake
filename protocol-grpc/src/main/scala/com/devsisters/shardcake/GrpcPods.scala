@@ -25,7 +25,7 @@ class GrpcPods(
           map.get(pod) match {
             case Some((channel, _)) => ZIO.succeed((channel, map))
             case None               =>
-              val builder = {
+              val builder =
                 config.executor match {
                   case Some(executor) =>
                     ManagedChannelBuilder
@@ -39,7 +39,6 @@ class GrpcPods(
                       .maxInboundMessageSize(config.maxInboundMessageSize)
                       .usePlaintext()
                 }
-              }
 
               val channel = ZManagedChannel(builder, config.clientInterceptors)
               // create a fiber that never ends and keeps the connection alive

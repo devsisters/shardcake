@@ -237,7 +237,7 @@ object ShardManager {
                                         )
         _                            <- ZIO.logInfo(
                                           s"Recovered pods ${filteredPods
-                                            .mkString("[", ", ", "]")} and assignments ${filteredAssignments.mkString("[", ", ", "]")}"
+                                              .mkString("[", ", ", "]")} and assignments ${filteredAssignments.mkString("[", ", ", "]")}"
                                         )
         _                            <- ManagerMetrics.pods.incrementBy(initialState.pods.size)
         _                            <- ZIO.foreachDiscard(initialState.shards) { case (_, podAddressOpt) =>
@@ -388,15 +388,13 @@ object ShardManager {
           case Some((pod, shards)) =>
             val oldPod = state.shards.get(shard).flatten
             // if old pod is same as new pod, don't change anything
-            if (oldPod.contains(pod))
-              (shardsPerPod, assignments)
+            if (oldPod.contains(pod)) (shardsPerPod, assignments)
             // if the new pod has more, as much, or only 1 less shard than the old pod, don't change anything
             else if (
               shardsPerPod.get(pod).fold(0)(_.size) + 1 >= oldPod.fold(Int.MaxValue)(
                 shardsPerPod.getOrElse(_, Nil).size
               )
-            )
-              (shardsPerPod, assignments)
+            ) (shardsPerPod, assignments)
             // otherwise, create a new assignment
             else {
               val unassigned = oldPod.fold(shardsPerPod)(oldPod => shardsPerPod.updatedWith(oldPod)(_.map(_ - shard)))

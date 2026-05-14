@@ -66,7 +66,7 @@ Shardcake only takes care of starting entities on the right pods as well as the 
 There are 4 pluggable parts that can be implemented with the technology of your choice.
 - The `Storage` trait defines where shard assignments will be stored. Shardcake provides an implementation using **Redis**.
 - The `Pods` trait defines how to communicate with remote pods. Shardcake provides an implementation using **gRPC** as the protocol.
-- The `Serialization` defines how to encode and decode messages. Shardcake provides an implementation using **Kryo**.
+- The `MessageCodec[Msg]` type class defines how to encode and decode messages of a given type. Shardcake provides backends using **Kryo** (reflective, no derivation) and **Proteus** (macro-derived, protobuf wire format).
 - The `PodsHealth` trait defines how to check if a pod is healthy or not. Shardcake provides an implementation using the **k8s API**.
 
 ![architecture diagram](/shardcake/arch.png)
@@ -124,9 +124,13 @@ object GuildMessage {
 }
 ```
 We also need to define an **Entity Type**. This is done by extending `EntityType` with the message type as well as a unique `String` identifier for this type.
+The `EntityType` constructor requires a given `MessageCodec[GuildMessage]` in scope, which decides how messages are serialized on the wire. Here we pull in the Kryo backend's universal given by importing it next to the declaration:
 ```scala
+import com.devsisters.shardcake.kryo.given
+
 object Guild extends EntityType[GuildMessage]("guild")
 ```
+See the [Customization](customization.md#message-codec) section for the other available backends.
 
 The behavior itself is a function with the following signature:
 ```scala
@@ -194,7 +198,6 @@ def run: Task[Unit] =
   ZIO.scoped(program).provide(
     ZLayer.succeed(Config.default),
     ZLayer.succeed(GrpcConfig.default),
-    Serialization.javaSerialization, // use java serialization for messages
     Storage.memory,                  // store data in memory
     ShardManagerClient.liveWithSttp, // client to communicate with the Shard Manager
     GrpcPods.live,                   // use gRPC protocol
@@ -236,7 +239,7 @@ as well as [a more complex example](https://github.com/devsisters/shardcake/tree
 
 To understand how Sharding works under the hood, have a look at the [Architecture](architecture.md) section.
 The [Configuration](config.md) section explains how to configure the sharding system.
-Finally, the [Customization](customization.md) section describes how you can use your own storage, serialization or messaging protocol, as well as the options provided by Shardcake.
+Finally, the [Customization](customization.md) section describes how you can use your own storage, message codec or messaging protocol, as well as the options provided by Shardcake.
 
 ::: tip Differences with Akka Cluster Sharding ?
 [Akka Cluster Sharding](https://doc.akka.io/docs/akka/current/typed/cluster-sharding.html) is the main alternative for sharding in Scala.

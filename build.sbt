@@ -1,7 +1,4 @@
-val scala212 = "2.12.21"
-val scala213 = "2.13.18"
-val scala3   = "3.3.7"
-val allScala = Seq(scala212, scala213, scala3)
+val scala3 = "3.3.7"
 
 val zioVersion            = "2.1.24"
 val zioGrpcVersion        = "0.6.3"
@@ -15,23 +12,22 @@ val calibanVersion        = "3.0.0"
 val redis4catsVersion     = "2.0.1"
 val redissonVersion       = "3.45.1"
 val scalaKryoVersion      = "1.4.0"
+val proteusVersion        = "0.3.3"
 val testContainersVersion = "0.44.1"
-val scalaCompatVersion    = "2.13.0"
 
 inThisBuild(
   List(
-    scalaVersion       := scala213,
-    crossScalaVersions := allScala,
-    organization       := "com.devsisters",
-    homepage           := Some(url("https://devsisters.github.io/shardcake/")),
-    licenses           := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
-    scmInfo            := Some(
+    scalaVersion := scala3,
+    organization := "com.devsisters",
+    homepage     := Some(url("https://devsisters.github.io/shardcake/")),
+    licenses     := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
+    scmInfo      := Some(
       ScmInfo(
         url("https://github.com/devsisters/shardcake"),
         "scm:git:git@github.com:devsisters/shardcake.git"
       )
     ),
-    developers         := List(
+    developers   := List(
       Developer(
         "ghostdogpr",
         "Pierre Ricadat",
@@ -49,7 +45,6 @@ addCommandAlias("check", "all scalafmtSbtCheck scalafmtCheck test:scalafmtCheck"
 lazy val root = project
   .in(file("."))
   .settings(publish / skip := true)
-  .settings(crossScalaVersions := Nil)
   .aggregate(
     core,
     manager,
@@ -58,6 +53,7 @@ lazy val root = project
     storageRedis,
     storageRedisson,
     serializationKryo,
+    serializationProteus,
     grpcProtocol,
     examples,
     benchmarks
@@ -70,9 +66,8 @@ lazy val core = project
   .settings(
     libraryDependencies ++=
       Seq(
-        "dev.zio"                %% "zio"                     % zioVersion,
-        "dev.zio"                %% "zio-streams"             % zioVersion,
-        "org.scala-lang.modules" %% "scala-collection-compat" % scalaCompatVersion
+        "dev.zio" %% "zio"         % zioVersion,
+        "dev.zio" %% "zio-streams" % zioVersion
       )
   )
 
@@ -146,11 +141,23 @@ lazy val serializationKryo = project
   .in(file("serialization-kryo"))
   .settings(name := "shardcake-serialization-kryo")
   .settings(commonSettings)
-  .dependsOn(core)
+  .dependsOn(entities)
   .settings(
     libraryDependencies ++=
       Seq(
         "io.altoo" %% "scala-kryo-serialization" % scalaKryoVersion
+      )
+  )
+
+lazy val serializationProteus = project
+  .in(file("serialization-proteus"))
+  .settings(name := "shardcake-serialization-proteus")
+  .settings(commonSettings)
+  .dependsOn(entities)
+  .settings(
+    libraryDependencies ++=
+      Seq(
+        "com.github.ghostdogpr" %% "proteus-core" % proteusVersion
       )
   )
 
@@ -226,35 +233,8 @@ lazy val commonSettings = Def.settings(
     "-language:existentials",
     "-unchecked",
     "-Xfatal-warnings",
-    "-language:postfixOps"
-  ) ++ (CrossVersion.partialVersion(scalaVersion.value) match {
-    case Some((2, 12)) =>
-      Seq(
-        "-Xsource:2.13",
-        "-Yno-adapted-args",
-        "-Ypartial-unification",
-        "-Ywarn-extra-implicit",
-        "-Ywarn-inaccessible",
-        "-Ywarn-infer-any",
-        "-Ywarn-unused:-nowarn",
-        "-Ywarn-nullary-override",
-        "-Ywarn-nullary-unit",
-        "-opt-inline-from:<source>",
-        "-opt-warnings",
-        "-opt:l:inline",
-        "-explaintypes"
-      )
-    case Some((2, 13)) =>
-      Seq(
-        "-Xlint:-byname-implicit",
-        "-explaintypes"
-      )
-
-    case Some((3, _)) =>
-      Seq(
-        "-explain-types",
-        "-Ykind-projector"
-      )
-    case _            => Nil
-  })
+    "-language:postfixOps",
+    "-explain-types",
+    "-Ykind-projector"
+  )
 )

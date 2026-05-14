@@ -72,14 +72,14 @@ object Pods {
         pod: PodAddress,
         entityId: String,
         messages: ZStream[Any, Throwable, BinaryMessage]
-      ): Task[Option[Array[Byte]]] = ZIO.none
+      ): Task[Option[Array[Byte]]]                                                                                   = ZIO.none
       def sendMessageAndReceiveStream(pod: PodAddress, message: BinaryMessage): ZStream[Any, Throwable, Array[Byte]] =
         ZStream.empty
       def sendStreamAndReceiveStream(
         pod: PodAddress,
         entityId: String,
         messages: ZStream[Any, Throwable, BinaryMessage]
-      ): ZStream[Any, Throwable, Array[Byte]] = ZStream.empty
+      ): ZStream[Any, Throwable, Array[Byte]]                                                                        = ZStream.empty
     })
 
   case class BinaryMessage(entityId: String, entityType: String, body: Array[Byte], replyId: Option[String])

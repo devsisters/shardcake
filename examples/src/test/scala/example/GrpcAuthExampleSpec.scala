@@ -57,7 +57,6 @@ object GrpcAuthExampleSpec extends ZIOSpecDefault {
       config,
       grpcConfigLayer(validAuthenticationKey),
       Sharding.live,
-      KryoSerialization.live,
       GrpcPods.live,
       GrpcShardingService.live
     )

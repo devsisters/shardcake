@@ -1,6 +1,6 @@
 package com.devsisters.shardcake
 
-import com.devsisters.shardcake.interfaces.{ Pods, Serialization, Storage }
+import com.devsisters.shardcake.interfaces.{ Pods, Storage }
 import com.devsisters.shardcake.interfaces.Pods.BinaryMessage
 import zio.{ Promise, Queue, RLayer, Task, ULayer, URLayer, ZIO, ZLayer }
 import zio.stream.ZStream
@@ -111,8 +111,8 @@ object LocalSharding {
    * A special layer meant for testing that uses a local queue rather than an external transport.
    * This layer will only work in a single JVM and is not suitable for production use.
    */
-  val live: RLayer[ShardManagerClient with Storage with Serialization with Config, Sharding] =
-    ZLayer.makeSome[ShardManagerClient with Storage with Serialization with Config, Sharding](
+  val live: RLayer[ShardManagerClient with Storage with Config, Sharding] =
+    ZLayer.makeSome[ShardManagerClient with Storage with Config, Sharding](
       localQueue,
       localPods,
       localServer,

@@ -194,8 +194,8 @@ object ShardManagerSpec extends ZIOSpecDefault {
               shutdownAssignments <- ZIO.serviceWithZIO[Storage](_.getAssignments)
               shutdownPods        <- ZIO.serviceWithZIO[Storage](_.getPods)
             } yield
-            // manager should have saved its state to storage when it shut down
-            assertTrue(shutdownAssignments.nonEmpty && shutdownPods.nonEmpty)
+              // manager should have saved its state to storage when it shut down
+              assertTrue(shutdownAssignments.nonEmpty && shutdownPods.nonEmpty)
 
             setup *> test
           }.provide(Storage.memory)

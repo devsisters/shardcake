@@ -36,10 +36,13 @@ trait Messenger[-Msg] {
 
   /**
    * Send a stream of messages and receive a stream of responses of type `Res`.
+   *
+   * The first message carrying the `StreamReplier` is constructed via `request`; any
+   * additional messages flow through `rest`.
    */
-  def sendStreamAndReceiveStream[Res](entityId: String)(
-    messages: StreamReplier[Res] => ZStream[Any, Throwable, Msg]
-  ): Task[ZStream[Any, Throwable, Res]]
+  def sendStreamAndReceiveStream[Res](
+    entityId: String
+  )(request: StreamReplier[Res] => Msg, rest: ZStream[Any, Throwable, Msg]): Task[ZStream[Any, Throwable, Res]]
 
   /**
    * Send a message and receive a stream of responses of type `Res` while restarting the stream when the remote entity
@@ -80,12 +83,13 @@ trait Messenger[-Msg] {
    * cursor according to what we've seen in the previous stream of responses.
    */
   def sendStreamAndReceiveStreamAutoRestart[Cursor, Res](entityId: String, cursor: Cursor)(
-    msg: (Cursor, StreamReplier[Res]) => ZStream[Any, Throwable, Msg]
+    request: (Cursor, StreamReplier[Res]) => Msg,
+    rest: Cursor => ZStream[Any, Throwable, Msg]
   )(
     updateCursor: (Cursor, Res) => Cursor
   ): ZStream[Any, Throwable, Res] =
     ZStream
-      .unwrap(sendStreamAndReceiveStream[Res](entityId)(msg(cursor, _)))
+      .unwrap(sendStreamAndReceiveStream[Res](entityId)(request(cursor, _), rest(cursor)))
       .either
       .mapAccum(cursor) {
         case (c, Right(res)) => updateCursor(c, res) -> Right(res)
@@ -95,7 +99,7 @@ trait Messenger[-Msg] {
         case Right(res)                              => ZStream.succeed(res)
         case Left((lastSeenCursor, StreamCancelled)) =>
           ZStream.execute(ZIO.sleep(200.millis)) ++
-            sendStreamAndReceiveStreamAutoRestart(entityId, lastSeenCursor)(msg)(updateCursor)
+            sendStreamAndReceiveStreamAutoRestart(entityId, lastSeenCursor)(request, rest)(updateCursor)
         case Left((_, err))                          => ZStream.fail(err)
       }
 }
