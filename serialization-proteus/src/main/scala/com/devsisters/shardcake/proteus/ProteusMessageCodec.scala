@@ -127,33 +127,40 @@ object ProteusMessageCodec {
     }
 
   private inline def selectorForProduct[A, Fields <: Tuple](using deriver: ProtobufDeriver): ReplySelector[A] =
-    findDirectReplyType[Fields] match {
-      case Some(entry) =>
-        ReplySelector(_ => Some(entry), ReplyEntrySummary.One(entry))
-      case None        =>
-        val nested = nestedFieldSelectors[Fields](0)
-        ReplySelector(
-          select = value => {
-            val product                        = value.asInstanceOf[Product]
-            var remaining                      = nested
-            var selected: Option[VariantEntry] = scala.None
-            while (selected.isEmpty && remaining.nonEmpty) {
-              val (index, selector) = remaining.head
-              selected = selector.select(product.productElement(index))
-              remaining = remaining.tail
-            }
-            selected
-          },
-          summary = nested.foldLeft(ReplyEntrySummary.None)(_ combine _._2.summary)
-        )
+    inline if (hasDirectReplier[Fields]) {
+      val entry = directReplyEntry[Fields]
+      ReplySelector(_ => Some(entry), ReplyEntrySummary.One(entry))
+    } else {
+      val nested = nestedFieldSelectors[Fields](0)
+      ReplySelector(
+        select = value => {
+          val product                        = value.asInstanceOf[Product]
+          var remaining                      = nested
+          var selected: Option[VariantEntry] = scala.None
+          while (selected.isEmpty && remaining.nonEmpty) {
+            val (index, selector) = remaining.head
+            selected = selector.select(product.productElement(index))
+            remaining = remaining.tail
+          }
+          selected
+        },
+        summary = nested.foldLeft(ReplyEntrySummary.None)(_ combine _._2.summary)
+      )
     }
 
-  private inline def findDirectReplyType[Fields <: Tuple](using deriver: ProtobufDeriver): Option[VariantEntry] =
+  private inline def hasDirectReplier[Fields <: Tuple]: Boolean =
     inline erasedValue[Fields] match {
-      case _: EmptyTuple                 => None
-      case _: (Replier[r] *: tail)       => Some(buildReplyEntry[r])
-      case _: (StreamReplier[r] *: tail) => Some(buildReplyEntry[r])
-      case _: (_ *: tail)                => findDirectReplyType[tail]
+      case _: EmptyTuple                 => false
+      case _: (Replier[?] *: tail)       => true
+      case _: (StreamReplier[?] *: tail) => true
+      case _: (_ *: tail)                => hasDirectReplier[tail]
+    }
+
+  private inline def directReplyEntry[Fields <: Tuple](using deriver: ProtobufDeriver): VariantEntry =
+    inline erasedValue[Fields] match {
+      case _: (Replier[r] *: tail)       => buildReplyEntry[r]
+      case _: (StreamReplier[r] *: tail) => buildReplyEntry[r]
+      case _: (_ *: tail)                => directReplyEntry[tail]
     }
 
   private inline def nestedFieldSelectors[Fields <: Tuple](index: Int)(using
