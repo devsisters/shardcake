@@ -123,8 +123,8 @@ object ProteusShardingSpec extends ZIOSpecDefault {
   // empty payload (what `fallbackEncode` would produce) is a hard decode failure.
   sealed trait Reply
   object Reply {
-    final case class Ack()             extends Reply
-    final case class Snapshot(v: Int)  extends Reply
+    final case class Ack()            extends Reply
+    final case class Snapshot(v: Int) extends Reply
   }
 
   object CounterActor {
@@ -147,13 +147,13 @@ object ProteusShardingSpec extends ZIOSpecDefault {
           messages.take.flatMap {
             case CounterMessage.GetCounter(replier)       => state.get.flatMap(v => replier.reply(Count(v)))
             case CounterMessage.IncrementCounter          =>
-              state.updateAndGet(_ + 1).flatMap(v =>
-                replyQueueRef.get.flatMap(ZIO.foreachDiscard(_)(_.offer(Reply.Snapshot(v))))
-              )
+              state
+                .updateAndGet(_ + 1)
+                .flatMap(v => replyQueueRef.get.flatMap(ZIO.foreachDiscard(_)(_.offer(Reply.Snapshot(v)))))
             case CounterMessage.DecrementCounter          =>
-              state.updateAndGet(_ - 1).flatMap(v =>
-                replyQueueRef.get.flatMap(ZIO.foreachDiscard(_)(_.offer(Reply.Snapshot(v))))
-              )
+              state
+                .updateAndGet(_ - 1)
+                .flatMap(v => replyQueueRef.get.flatMap(ZIO.foreachDiscard(_)(_.offer(Reply.Snapshot(v)))))
             case CounterMessage.StreamingChanges(replier) =>
               replier.replyStream(state.changes.ensuring(state.set(-1)).map(Count(_)))
             case CounterMessage.StreamReply(replier)      =>
