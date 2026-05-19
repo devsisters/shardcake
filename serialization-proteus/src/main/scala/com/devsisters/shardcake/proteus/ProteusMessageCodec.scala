@@ -6,35 +6,57 @@ import com.devsisters.shardcake.interfaces.MessageCodec
 
 import scala.compiletime.{ erasedValue, summonFrom, summonInline }
 import scala.deriving.Mirror
-import scala.reflect.ClassTag
 
 /**
- * A macro-derived `MessageCodec[Msg]` backed by Proteus.
+ * An inline-derived `MessageCodec[Msg]` backed by Proteus.
  *
  * Walks `Msg` at compile time:
  *  - For the whole message it uses `ProtobufCodec.derived[Msg]` for encode/decode.
- *  - For each sealed-trait variant containing a `Replier[R]` or `StreamReplier[R]` field
- *    it derives `ProtobufCodec[R]` and registers a per-variant encoder/decoder. At
- *    runtime, `replyEncoder` and `replyDecoder` dispatch via the sample message's class.
+ *  - For each message shape containing a `Replier[R]` or `StreamReplier[R]` field, directly
+ *    or inside nested case classes / sealed-trait variants, it derives `ProtobufCodec[R]`.
  *
- * Variants without a reply field do not participate in the dispatch table (they are
- * fire-and-forget messages). Product types (a single case class as `Msg`) are also
- * supported.
+ * Message shapes without a reply field do not participate in reply dispatch (they are
+ * fire-and-forget messages). Product types (a single case class as `Msg`) are also supported.
+ *
+ * Recursive message graphs are not supported by the reply-selector derivation. Keep
+ * recursive structures behind non-product containers or provide a custom codec if they need
+ * reply discovery.
  */
 object ProteusMessageCodec {
 
   private type VariantEntry = (Any => Array[Byte], Array[Byte] => Any)
+
+  private enum ReplyEntrySummary {
+    case None
+    case One(entry: VariantEntry)
+    case Many
+
+    def combine(that: ReplyEntrySummary): ReplyEntrySummary =
+      (this, that) match {
+        case (ReplyEntrySummary.None, other)                          => other
+        case (one @ ReplyEntrySummary.One(_), ReplyEntrySummary.None) => one
+        case _                                                        => ReplyEntrySummary.Many
+      }
+
+    def soleEntry: Option[VariantEntry] =
+      this match {
+        case ReplyEntrySummary.One(entry)                    => Some(entry)
+        case ReplyEntrySummary.None | ReplyEntrySummary.Many => scala.None
+      }
+  }
+
+  private final case class ReplySelector[-A](select: A => Option[VariantEntry], summary: ReplyEntrySummary)
 
   /**
    * Derive a `MessageCodec[Msg]` using Proteus. Proteus requires `Msg` to be a message
    * (case class) or an enum / sealed trait at the root — primitives like `Int` / `String`
    * are not supported as message types directly; wrap them in a case class.
    *
-   * For sealed traits, variants containing a `Replier[R]` / `StreamReplier[R]` field have
-   * their per-slot reply codec materialised at compile time.
+   * For sealed traits and case classes, direct or nested `Replier[R]` / `StreamReplier[R]`
+   * fields have their per-slot reply codec materialised at compile time.
    */
   inline def derived[Msg](using m: Mirror.Of[Msg], deriver: ProtobufDeriver): MessageCodec[Msg] =
-    build(summonOrDeriveProtobufCodec[Msg](using deriver), collectVariantEntries[Msg](using m, deriver).toMap)
+    build(summonOrDeriveProtobufCodec[Msg](using deriver), deriveSelector[Msg](using m, deriver))
 
   private inline def summonOrDeriveProtobufCodec[A](using deriver: ProtobufDeriver): ProtobufCodec[A] =
     summonFrom {
@@ -44,12 +66,12 @@ object ProteusMessageCodec {
 
   private def build[Msg](
     msgCodec: ProtobufCodec[Msg],
-    classToEntry: Map[Class[?], VariantEntry]
-  ): MessageCodec[Msg] = new Impl[Msg](msgCodec, classToEntry)
+    replySelector: ReplySelector[Msg]
+  ): MessageCodec[Msg] = new Impl[Msg](msgCodec, replySelector)
 
   private final class Impl[Msg](
     msgCodec: ProtobufCodec[Msg],
-    classToEntry: Map[Class[?], VariantEntry]
+    replySelector: ReplySelector[Msg]
   ) extends MessageCodec[Msg] {
 
     private val fallbackEncode: Any => Array[Byte] = _ => Array.emptyByteArray
@@ -59,19 +81,19 @@ object ProteusMessageCodec {
     // Caching it also prevents `fallbackEncode` from ever being handed out for a request
     // that didn't carry the Replier (e.g. stream continuations).
     private val singleEncoder: Option[Any => Array[Byte]] =
-      if (classToEntry.size == 1) Some(classToEntry.head._2._1) else None
+      replySelector.summary.soleEntry.map(_._1)
 
     def encodeMessage(message: Msg): Array[Byte] = msgCodec.encode(message)
     def decodeMessage(bytes: Array[Byte]): Msg   = msgCodec.decode(bytes)
 
     def replyEncoder(decoded: Msg): Any => Array[Byte] =
-      singleEncoder.getOrElse(classToEntry.get(decoded.getClass).fold(fallbackEncode)(_._1))
+      singleEncoder.getOrElse(replySelector.select(decoded).fold(fallbackEncode)(_._1))
 
     def replyDecoder[Res](sample: Msg): Array[Byte] => Res       = lookupDecoder(sample, "reply")
     def streamReplyDecoder[Res](sample: Msg): Array[Byte] => Res = lookupDecoder(sample, "stream reply")
 
     private def lookupDecoder[Res](sample: Msg, kind: String): Array[Byte] => Res =
-      classToEntry.get(sample.getClass) match {
+      replySelector.select(sample) match {
         case Some((_, dec)) => bytes => dec(bytes).asInstanceOf[Res]
         case None           =>
           val message = s"No $kind codec registered for variant ${sample.getClass.getName}"
@@ -79,45 +101,84 @@ object ProteusMessageCodec {
       }
   }
 
-  private inline def collectVariantEntries[Msg](using
-    m: Mirror.Of[Msg],
-    deriver: ProtobufDeriver
-  ): List[(Class[?], VariantEntry)] =
+  private inline def deriveSelector[A](using m: Mirror.Of[A], deriver: ProtobufDeriver): ReplySelector[A] =
     inline m match {
-      case s: Mirror.SumOf[Msg]     => collectFromVariants[s.MirroredElemTypes]
-      case p: Mirror.ProductOf[Msg] =>
-        val ct = summonInline[ClassTag[Msg]]
-        entryForProduct[Msg, p.MirroredElemTypes].map(ct.runtimeClass -> _).toList
+      case s: Mirror.SumOf[A]     =>
+        val selectors = collectVariantSelectors[s.MirroredElemTypes]
+        ReplySelector(
+          select = value => selectors(s.ordinal(value)).select(value),
+          summary = selectors.foldLeft(ReplyEntrySummary.None)(_ combine _.summary)
+        )
+      case p: Mirror.ProductOf[A] =>
+        selectorForProduct[A, p.MirroredElemTypes]
     }
 
-  private inline def collectFromVariants[Variants <: Tuple](using
+  private inline def collectVariantSelectors[Variants <: Tuple](using
     deriver: ProtobufDeriver
-  ): List[(Class[?], VariantEntry)] =
+  ): Vector[ReplySelector[Any]] =
     inline erasedValue[Variants] match {
-      case _: EmptyTuple     => Nil
+      case _: EmptyTuple     => Vector.empty
       case _: (head *: tail) =>
-        val rest      = collectFromVariants[tail]
-        val variantCt = summonInline[ClassTag[head]]
-        summonFrom {
-          case p: Mirror.ProductOf[`head`] =>
-            entryForProduct[head, p.MirroredElemTypes] match {
-              case Some(entry) => (variantCt.runtimeClass, entry) :: rest
-              case None        => rest
-            }
-          case _                           => rest
+        val current = summonFrom {
+          case m: Mirror.Of[`head`] => deriveSelector[head](using m, deriver).asInstanceOf[ReplySelector[Any]]
+          case _                    => emptySelector[Any]
         }
+        current +: collectVariantSelectors[tail]
     }
 
-  private inline def entryForProduct[V, Fields <: Tuple](using deriver: ProtobufDeriver): Option[VariantEntry] =
-    findReplyType[Fields]
+  private inline def selectorForProduct[A, Fields <: Tuple](using deriver: ProtobufDeriver): ReplySelector[A] =
+    findDirectReplyType[Fields] match {
+      case Some(entry) =>
+        ReplySelector(_ => Some(entry), ReplyEntrySummary.One(entry))
+      case None        =>
+        val nested = nestedFieldSelectors[Fields](0)
+        ReplySelector(
+          select = value => {
+            val product                        = value.asInstanceOf[Product]
+            var remaining                      = nested
+            var selected: Option[VariantEntry] = scala.None
+            while (selected.isEmpty && remaining.nonEmpty) {
+              val (index, selector) = remaining.head
+              selected = selector.select(product.productElement(index))
+              remaining = remaining.tail
+            }
+            selected
+          },
+          summary = nested.foldLeft(ReplyEntrySummary.None)(_ combine _._2.summary)
+        )
+    }
 
-  private inline def findReplyType[Fields <: Tuple](using deriver: ProtobufDeriver): Option[VariantEntry] =
+  private inline def findDirectReplyType[Fields <: Tuple](using deriver: ProtobufDeriver): Option[VariantEntry] =
     inline erasedValue[Fields] match {
       case _: EmptyTuple                 => None
       case _: (Replier[r] *: tail)       => Some(buildReplyEntry[r])
       case _: (StreamReplier[r] *: tail) => Some(buildReplyEntry[r])
-      case _: (_ *: tail)                => findReplyType[tail]
+      case _: (_ *: tail)                => findDirectReplyType[tail]
     }
+
+  private inline def nestedFieldSelectors[Fields <: Tuple](index: Int)(using
+    deriver: ProtobufDeriver
+  ): List[(Int, ReplySelector[Any])] =
+    inline erasedValue[Fields] match {
+      case _: EmptyTuple                 => Nil
+      case _: (Replier[?] *: tail)       => nestedFieldSelectors[tail](index + 1)
+      case _: (StreamReplier[?] *: tail) => nestedFieldSelectors[tail](index + 1)
+      case _: (head *: tail)             =>
+        val rest = nestedFieldSelectors[tail](index + 1)
+        summonFrom {
+          case m: Mirror.Of[`head`] =>
+            val selector = deriveSelector[head](using m, deriver).asInstanceOf[ReplySelector[Any]]
+            selector.summary match {
+              case ReplyEntrySummary.None                            => rest
+              case ReplyEntrySummary.One(_) | ReplyEntrySummary.Many => (index -> selector) :: rest
+            }
+          case _                    =>
+            rest
+        }
+    }
+
+  private def emptySelector[A]: ReplySelector[A] =
+    ReplySelector(_ => None, ReplyEntrySummary.None)
 
   /**
    * Materialise the per-reply-type encoder/decoder pair for one Replier/StreamReplier slot.
