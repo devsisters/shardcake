@@ -26,5 +26,5 @@ package object proteus {
   inline given derive[Msg](using m: Mirror.Of[Msg], deriver: ProtobufDeriver): MessageCodec[Msg] =
     ProteusMessageCodec.derived[Msg](using m, deriver)
 
-  given Schema[Unit] = Schema[Byte].transform[Unit](_ => (), _ => 0)
+  given Schema[Unit] = Schema[Int].transform[Unit](_ => (), _ => 0)
 }
