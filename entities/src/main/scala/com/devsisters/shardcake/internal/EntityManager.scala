@@ -11,7 +11,7 @@ private[shardcake] trait EntityManager[-Req] {
     entityId: String,
     req: Req,
     replyId: Option[String],
-    pendingReply: PendingReply
+    pendingReply: Option[PendingReply]
   ): IO[EntityNotManagedByThisPod, Unit]
   def terminateEntity(entityId: String): UIO[Unit]
   def terminateEntitiesOnShards(shards: Set[ShardId]): UIO[Unit]
@@ -104,7 +104,7 @@ private[shardcake] object EntityManager {
       entityId: String,
       req: Req,
       replyId: Option[String],
-      pendingReply: PendingReply
+      pendingReply: Option[PendingReply]
     ): IO[EntityNotManagedByThisPod, Unit] =
       for {
         // first, verify that this entity should be handled by this pod
@@ -121,7 +121,7 @@ private[shardcake] object EntityManager {
                  case Some(Left(queue))        =>
                    offerToQueue(entityId, queue, req, replyId, pendingReply)
                  case None if !loadEntity(req) =>
-                   pendingReply.end
+                   pendingReply.fold[UIO[Unit]](ZIO.unit)(_.end)
                  case _                        =>
                    getOrCreateQueue(entityId).flatMap {
                      case Right(_)    =>
@@ -138,13 +138,15 @@ private[shardcake] object EntityManager {
       queue: Queue[Req],
       req: Req,
       replyId: Option[String],
-      pendingReply: PendingReply
+      pendingReply: Option[PendingReply]
     ): IO[EntityNotManagedByThisPod, Unit] =
       currentTimeInMilliseconds.flatMap(cdt => entitiesLastReceivedAt.update(_ + (entityId -> cdt))) *>
         // add the message to the queue and setup the reply channel if needed
-        (replyId match {
-          case Some(replyId) => sharding.initReply(replyId, pendingReply) <* queue.offer(req)
-          case None          => queue.offer(req) *> pendingReply.end
+        ((replyId, pendingReply) match {
+          case (Some(replyId), Some(pr)) => sharding.initReply(replyId, pr) <* queue.offer(req)
+          case (None, Some(pr))          => queue.offer(req) *> pr.end
+          // stream continuation: reply is already set up on a prior message — just enqueue
+          case (_, None)                 => queue.offer(req).unit
         }).catchAllCause(_ => Clock.sleep(100 millis) *> send(entityId, req, replyId, pendingReply))
 
     private def getOrCreateQueue(entityId: String): IO[EntityNotManagedByThisPod, Either[Queue[Req], Signal]] =

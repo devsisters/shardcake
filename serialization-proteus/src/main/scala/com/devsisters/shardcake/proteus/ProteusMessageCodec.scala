@@ -54,11 +54,18 @@ object ProteusMessageCodec {
 
     private val fallbackEncode: Any => Array[Byte] = _ => Array.emptyByteArray
 
+    // With exactly one Replier-bearing variant there's only one possible reply type, so
+    // the same encoder applies regardless of which variant the incoming request was.
+    // Caching it also prevents `fallbackEncode` from ever being handed out for a request
+    // that didn't carry the Replier (e.g. stream continuations).
+    private val singleEncoder: Option[Any => Array[Byte]] =
+      if (classToEntry.size == 1) Some(classToEntry.head._2._1) else None
+
     def encodeMessage(message: Msg): Array[Byte] = msgCodec.encode(message)
     def decodeMessage(bytes: Array[Byte]): Msg   = msgCodec.decode(bytes)
 
     def replyEncoder(decoded: Msg): Any => Array[Byte] =
-      classToEntry.get(decoded.getClass).fold(fallbackEncode)(_._1)
+      singleEncoder.getOrElse(classToEntry.get(decoded.getClass).fold(fallbackEncode)(_._1))
 
     def replyDecoder[Res](sample: Msg): Array[Byte] => Res       = lookupDecoder(sample, "reply")
     def streamReplyDecoder[Res](sample: Msg): Array[Byte] => Res = lookupDecoder(sample, "stream reply")

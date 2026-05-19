@@ -224,13 +224,22 @@ class Sharding private (
       case None        => ZIO.fail(new Exception(s"Entity type ${msg.entityType} was not registered."))
     })
 
+  private[shardcake] def isReplyRegistered(id: String): UIO[Boolean] =
+    pendingReplies.get.map(_.contains(id))
+
   private[shardcake] def initReply(id: String, pendingReply: PendingReply): UIO[Unit] =
-    pendingReplies
-      .modify(map => if (map.contains(id)) (true, map) else (false, map.updated(id, pendingReply)))
-      .flatMap(alreadyPresent =>
-        pendingReply.await.ensuring(pendingReplies.update(_ - id)).forkDaemon.unless(alreadyPresent)
-      )
-      .unit
+    // Cheap read avoids the CAS + forkDaemon when a prior message in the same stream
+    // already registered this slot. Also guards against re-init on `offerToQueue` retry.
+    isReplyRegistered(id).flatMap {
+      case true  => ZIO.unit
+      case false =>
+        pendingReplies
+          .modify(map => if (map.contains(id)) (true, map) else (false, map.updated(id, pendingReply)))
+          .flatMap(alreadyPresent =>
+            pendingReply.await.ensuring(pendingReplies.update(_ - id)).forkDaemon.unless(alreadyPresent)
+          )
+          .unit
+    }
 
   def reply[Reply](reply: Reply, replier: Replier[Reply]): UIO[Unit] =
     pendingReplies
@@ -283,9 +292,16 @@ class Sharding private (
     entityStates.get.flatMap(
       _.get(recipientTypeName) match {
         case Some(state) =>
-          state.entityManager
-            .asInstanceOf[EntityManager[Msg]]
-            .send(entityId, msg, replyId, PendingReply.Value(replyChannel))
+          val em = state.entityManager.asInstanceOf[EntityManager[Msg]]
+          replyId match {
+            case Some(rid) =>
+              isReplyRegistered(rid).flatMap {
+                case true  => em.send(entityId, msg, replyId, None)
+                case false => em.send(entityId, msg, replyId, Some(PendingReply.Value(replyChannel)))
+              }
+            case None      =>
+              em.send(entityId, msg, None, Some(PendingReply.Value(replyChannel)))
+          }
         case None        =>
           ZIO.fail(new Exception(s"Entity type $recipientTypeName was not registered."))
       }
@@ -570,15 +586,28 @@ class Sharding private (
                          ZIO
                            .attempt(recipientType.codec.decodeMessage(msg.body))
                            .flatMap { decoded =>
-                             val encoder =
-                               if (msg.replyId.isDefined) recipientType.codec.replyEncoder(decoded)
-                               else Sharding.noReplyEncoder
-                             entityManager.send(
-                               msg.entityId,
-                               decoded,
-                               msg.replyId,
-                               PendingReply.Bytes(replyChannel, encoder)
-                             )
+                             msg.replyId match {
+                               case None          =>
+                                 entityManager.send(
+                                   msg.entityId,
+                                   decoded,
+                                   None,
+                                   Some(PendingReply.Bytes(replyChannel, Sharding.noReplyEncoder))
+                                 )
+                               case Some(replyId) =>
+                                 isReplyRegistered(replyId).flatMap {
+                                   case true  =>
+                                     entityManager.send(msg.entityId, decoded, msg.replyId, None)
+                                   case false =>
+                                     val encoder = recipientType.codec.replyEncoder(decoded)
+                                     entityManager.send(
+                                       msg.entityId,
+                                       decoded,
+                                       msg.replyId,
+                                       Some(PendingReply.Bytes(replyChannel, encoder))
+                                     )
+                                 }
+                             }
                            }
                            .catchAllCause(replyChannel.fail)
       _             <- entityStates.update(_.updated(recipientType.name, EntityState(entityManager, processBinary)))
