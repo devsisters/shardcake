@@ -1,6 +1,6 @@
 package com.devsisters.shardcake.proteus
 
-import _root_.proteus.ProtobufCodec
+import _root_.proteus.{ ProtobufCodec, ProtobufDeriver }
 import com.devsisters.shardcake.{ Replier, StreamReplier }
 import com.devsisters.shardcake.interfaces.MessageCodec
 
@@ -33,13 +33,13 @@ object ProteusMessageCodec {
    * For sealed traits, variants containing a `Replier[R]` / `StreamReplier[R]` field have
    * their per-slot reply codec materialised at compile time.
    */
-  inline def derived[Msg](using m: Mirror.Of[Msg]): MessageCodec[Msg] =
-    build(summonOrDeriveProtobufCodec[Msg], collectVariantEntries[Msg].toMap)
+  inline def derived[Msg](using m: Mirror.Of[Msg], deriver: ProtobufDeriver): MessageCodec[Msg] =
+    build(summonOrDeriveProtobufCodec[Msg](using deriver), collectVariantEntries[Msg](using m, deriver).toMap)
 
-  private inline def summonOrDeriveProtobufCodec[A]: ProtobufCodec[A] =
+  private inline def summonOrDeriveProtobufCodec[A](using deriver: ProtobufDeriver): ProtobufCodec[A] =
     summonFrom {
       case codec: ProtobufCodec[A] => codec
-      case _                       => ProtobufCodec.derived[A]
+      case _                       => ProtobufCodec.derived[A](using deriver)
     }
 
   private def build[Msg](
@@ -72,7 +72,10 @@ object ProteusMessageCodec {
       }
   }
 
-  private inline def collectVariantEntries[Msg](using m: Mirror.Of[Msg]): List[(Class[?], VariantEntry)] =
+  private inline def collectVariantEntries[Msg](using
+    m: Mirror.Of[Msg],
+    deriver: ProtobufDeriver
+  ): List[(Class[?], VariantEntry)] =
     inline m match {
       case s: Mirror.SumOf[Msg]     => collectFromVariants[s.MirroredElemTypes]
       case p: Mirror.ProductOf[Msg] =>
@@ -80,7 +83,9 @@ object ProteusMessageCodec {
         entryForProduct[Msg, p.MirroredElemTypes].map(ct.runtimeClass -> _).toList
     }
 
-  private inline def collectFromVariants[Variants <: Tuple]: List[(Class[?], VariantEntry)] =
+  private inline def collectFromVariants[Variants <: Tuple](using
+    deriver: ProtobufDeriver
+  ): List[(Class[?], VariantEntry)] =
     inline erasedValue[Variants] match {
       case _: EmptyTuple     => Nil
       case _: (head *: tail) =>
@@ -96,10 +101,10 @@ object ProteusMessageCodec {
         }
     }
 
-  private inline def entryForProduct[V, Fields <: Tuple]: Option[VariantEntry] =
+  private inline def entryForProduct[V, Fields <: Tuple](using deriver: ProtobufDeriver): Option[VariantEntry] =
     findReplyType[Fields]
 
-  private inline def findReplyType[Fields <: Tuple]: Option[VariantEntry] =
+  private inline def findReplyType[Fields <: Tuple](using deriver: ProtobufDeriver): Option[VariantEntry] =
     inline erasedValue[Fields] match {
       case _: EmptyTuple                 => None
       case _: (Replier[r] *: tail)       => Some(buildReplyEntry[r])
@@ -113,7 +118,7 @@ object ProteusMessageCodec {
    * clear compile error when neither is available — Proteus needs a case class / sealed
    * trait / enum at the root and can't encode bare primitives.
    */
-  private inline def buildReplyEntry[R]: VariantEntry =
+  private inline def buildReplyEntry[R](using deriver: ProtobufDeriver): VariantEntry =
     summonFrom {
       case codec: ProtobufCodec[R] =>
         (
@@ -121,7 +126,7 @@ object ProteusMessageCodec {
           (b: Array[Byte]) => codec.decode(b)
         )
       case _: Mirror.Of[R]         =>
-        val codec = ProtobufCodec.derived[R]
+        val codec = ProtobufCodec.derived[R](using deriver)
         (
           (v: Any) => codec.encode(v.asInstanceOf[R]),
           (b: Array[Byte]) => codec.decode(b)
