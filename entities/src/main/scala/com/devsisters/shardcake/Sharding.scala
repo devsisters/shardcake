@@ -226,9 +226,9 @@ class Sharding private (
 
   private[shardcake] def initReply(id: String, pendingReply: PendingReply): UIO[Unit] =
     pendingReplies
-      .getAndUpdate(_.updated(id, pendingReply))
-      .flatMap(beforePendingReplies =>
-        pendingReply.await.ensuring(pendingReplies.update(_ - id)).forkDaemon.unless(beforePendingReplies.contains(id))
+      .modify(map => if (map.contains(id)) (true, map) else (false, map.updated(id, pendingReply)))
+      .flatMap(alreadyPresent =>
+        pendingReply.await.ensuring(pendingReplies.update(_ - id)).forkDaemon.unless(alreadyPresent)
       )
       .unit
 
