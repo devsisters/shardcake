@@ -41,7 +41,7 @@ inThisBuild(
 
 name := "shardcake"
 addCommandAlias("fmt", "all scalafmtSbt scalafmt test:scalafmt")
-addCommandAlias("check", "all scalafmtSbtCheck scalafmtCheck test:scalafmtCheck")
+addCommandAlias("check", "all scalafmtSbtCheck scalafmtCheck test:scalafmtCheck grpcProtocol/checkProto")
 
 lazy val root = project
   .in(file("."))
