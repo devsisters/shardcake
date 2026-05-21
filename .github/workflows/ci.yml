@@ -32,8 +32,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        java: ['adoptium:17']
-        scala: ['2.12.21', '2.13.18', '3.3.7']
+        java: ['adoptium:21']
+        scala: ['3.3.7']
     steps:
       - name: Checkout current branch
         uses: actions/checkout@v6
@@ -61,7 +61,7 @@ jobs:
       - name: Setup Scala and Java
         uses: coursier/setup-action@v3
         with:
-          jvm: adoptium:17
+          jvm: adoptium:21
           apps: sbt
       - name: Cache scala dependencies
         uses: coursier/cache-action@v8
