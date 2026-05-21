@@ -1,10 +1,7 @@
-val scala212 = "2.12.21"
-val scala213 = "2.13.18"
-val scala3   = "3.3.7"
-val allScala = Seq(scala212, scala213, scala3)
+val scala3 = "3.3.7"
 
 val zioVersion            = "2.1.24"
-val zioGrpcVersion        = "0.6.3"
+val proteusVersion        = "0.4.0"
 val grpcNettyVersion      = "1.71.0"
 val zioK8sVersion         = "3.2.0"
 val zioK8sSttpVersion     = "3.11.0"
@@ -21,18 +18,17 @@ val scalaCompatVersion    = "2.13.0"
 
 inThisBuild(
   List(
-    scalaVersion       := scala213,
-    crossScalaVersions := allScala,
-    organization       := "com.devsisters",
-    homepage           := Some(url("https://devsisters.github.io/shardcake/")),
-    licenses           := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
-    scmInfo            := Some(
+    scalaVersion := scala3,
+    organization := "com.devsisters",
+    homepage     := Some(url("https://devsisters.github.io/shardcake/")),
+    licenses     := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
+    scmInfo      := Some(
       ScmInfo(
         url("https://github.com/devsisters/shardcake"),
         "scm:git:git@github.com:devsisters/shardcake.git"
       )
     ),
-    developers         := List(
+    developers   := List(
       Developer(
         "ghostdogpr",
         "Pierre Ricadat",
@@ -50,7 +46,6 @@ addCommandAlias("check", "all scalafmtSbtCheck scalafmtCheck test:scalafmtCheck"
 lazy val root = project
   .in(file("."))
   .settings(publish / skip := true)
-  .settings(crossScalaVersions := Nil)
   .aggregate(
     core,
     manager,
@@ -156,25 +151,47 @@ lazy val serializationKryo = project
       )
   )
 
+lazy val generateProto = taskKey[Unit]("Regenerate sharding.proto from the Scala protocol definition.")
+lazy val checkProto    = taskKey[Unit]("Fail if sharding.proto is out of sync with the Scala protocol definition.")
+
 lazy val grpcProtocol = project
   .in(file("protocol-grpc"))
   .settings(name := "shardcake-protocol-grpc")
   .settings(commonSettings)
-  .settings(protobuf: _*)
-  .settings(
-    Compile / PB.targets := Seq(
-      scalapb.gen(grpc = true)          -> (Compile / sourceManaged).value,
-      scalapb.zio_grpc.ZioCodeGenerator -> (Compile / sourceManaged).value
-    )
-  )
   .dependsOn(core, entities)
   .settings(
     libraryDependencies ++= Seq(
-      "com.thesamet.scalapb"          %% "scalapb-runtime"      % scalapb.compiler.Version.scalapbVersion % "protobuf",
-      "com.thesamet.scalapb"          %% "scalapb-runtime-grpc" % scalapb.compiler.Version.scalapbVersion,
-      "com.thesamet.scalapb.zio-grpc" %% "zio-grpc-core"        % zioGrpcVersion,
-      "io.grpc"                        % "grpc-netty"           % grpcNettyVersion
-    )
+      "com.github.ghostdogpr" %% "proteus-grpc"     % proteusVersion,
+      "com.github.ghostdogpr" %% "proteus-grpc-zio" % proteusVersion,
+      "io.grpc"                % "grpc-netty"       % grpcNettyVersion,
+      "io.grpc"                % "grpc-services"    % grpcNettyVersion
+    ),
+    generateProto := {
+      val cp     = (Compile / fullClasspath).value
+      val log    = streams.value.log
+      val output = (Compile / sourceDirectory).value / "protobuf"
+      runner.value
+        .run(
+          "com.devsisters.shardcake.protocol.GenerateProto",
+          cp.files,
+          Seq(output.getAbsolutePath),
+          log
+        )
+        .get
+      log.info(s"Regenerated $output/sharding.proto")
+    },
+    checkProto    := {
+      val log   = streams.value.log
+      val proto = (Compile / sourceDirectory).value / "protobuf" / "sharding.proto"
+      val _     = generateProto.value
+      import scala.sys.process._
+      val diff  = s"git diff --exit-code -- ${proto.getAbsolutePath}".!
+      if (diff != 0) {
+        sys.error(
+          "sharding.proto is out of sync with the Scala protocol definition. Run `sbt grpcProtocol/generateProto` and commit the result."
+        )
+      } else log.info("sharding.proto is in sync.")
+    }
   )
 
 lazy val examples = project
@@ -198,10 +215,6 @@ lazy val benchmarks = project
   .settings(commonSettings)
   .enablePlugins(JmhPlugin)
   .dependsOn(grpcProtocol, serializationKryo)
-
-lazy val protobuf = Seq(
-  PB.protocVersion := "3.19.2"
-) ++ Project.inConfig(Test)(sbtprotoc.ProtocPlugin.protobufConfigSettings)
 
 lazy val commonSettings = Def.settings(
   testFrameworks := Seq(new TestFramework("zio.test.sbt.ZTestFramework")),
@@ -228,35 +241,8 @@ lazy val commonSettings = Def.settings(
     "-language:existentials",
     "-unchecked",
     "-Xfatal-warnings",
-    "-language:postfixOps"
-  ) ++ (CrossVersion.partialVersion(scalaVersion.value) match {
-    case Some((2, 12)) =>
-      Seq(
-        "-Xsource:2.13",
-        "-Yno-adapted-args",
-        "-Ypartial-unification",
-        "-Ywarn-extra-implicit",
-        "-Ywarn-inaccessible",
-        "-Ywarn-infer-any",
-        "-Ywarn-unused:-nowarn",
-        "-Ywarn-nullary-override",
-        "-Ywarn-nullary-unit",
-        "-opt-inline-from:<source>",
-        "-opt-warnings",
-        "-opt:l:inline",
-        "-explaintypes"
-      )
-    case Some((2, 13)) =>
-      Seq(
-        "-Xlint:-byname-implicit",
-        "-explaintypes"
-      )
-
-    case Some((3, _)) =>
-      Seq(
-        "-explain-types",
-        "-Ykind-projector"
-      )
-    case _            => Nil
-  })
+    "-language:postfixOps",
+    "-explain-types",
+    "-Ykind-projector"
+  )
 )
