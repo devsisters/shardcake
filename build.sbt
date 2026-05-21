@@ -20,15 +20,15 @@ inThisBuild(
   List(
     scalaVersion := scala3,
     organization := "com.devsisters",
-    homepage           := Some(url("https://devsisters.github.io/shardcake/")),
-    licenses           := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
-    scmInfo            := Some(
+    homepage     := Some(url("https://devsisters.github.io/shardcake/")),
+    licenses     := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
+    scmInfo      := Some(
       ScmInfo(
         url("https://github.com/devsisters/shardcake"),
         "scm:git:git@github.com:devsisters/shardcake.git"
       )
     ),
-    developers         := List(
+    developers   := List(
       Developer(
         "ghostdogpr",
         "Pierre Ricadat",
