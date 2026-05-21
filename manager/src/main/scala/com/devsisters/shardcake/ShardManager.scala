@@ -499,8 +499,7 @@ object ShardManager {
           case Some((podAddress, shards)) =>
             val oldPodAddress = state.shards.get(shard).flatten
             // if old pod is same as new pod, don't change anything
-            if (oldPodAddress.contains(podAddress))
-              (shardsPerPod, assignments)
+            if (oldPodAddress.contains(podAddress)) (shardsPerPod, assignments)
             // if the new pod has more, as much, or only 1 less shard than the old pod, don't change anything
             else if (
               shardsPerPod.get(podAddress).fold(0)(_.size) + 1 >= oldPodAddress.fold(Int.MaxValue)(
