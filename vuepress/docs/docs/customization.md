@@ -77,9 +77,19 @@ trait Pods {
   def assignShards(pod: PodAddress, shards: Set[ShardId]): Task[Unit]
   def unassignShards(pod: PodAddress, shards: Set[ShardId]): Task[Unit]
   def ping(pod: PodAddress): Task[Unit]
-  
+
   def sendMessage(pod: PodAddress, message: BinaryMessage): Task[Option[Array[Byte]]]
-  def sendMessageStreaming(pod: PodAddress, message: BinaryMessage): ZStream[Any, Throwable, Array[Byte]]
+  def sendStream(
+    pod: PodAddress,
+    entityId: String,
+    messages: ZStream[Any, Throwable, BinaryMessage]
+  ): Task[Option[Array[Byte]]]
+  def sendMessageAndReceiveStream(pod: PodAddress, message: BinaryMessage): ZStream[Any, Throwable, Array[Byte]]
+  def sendStreamAndReceiveStream(
+    pod: PodAddress,
+    entityId: String,
+    messages: ZStream[Any, Throwable, BinaryMessage]
+  ): ZStream[Any, Throwable, Array[Byte]]
 }
 ```
 For testing, you can use the `Pods.noop` layer that does nothing.
