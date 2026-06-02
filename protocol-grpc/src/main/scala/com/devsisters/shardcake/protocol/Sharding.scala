@@ -13,7 +13,7 @@ object Sharding {
 
   case class SendRequest(entityId: String, entityType: String, body: Array[Byte], replyId: Option[String])
       derives ProtobufCodec
-  case class SendResponse(body: Array[Byte]) derives ProtobufCodec
+  case class SendResponse(body: Option[Array[Byte]]) derives ProtobufCodec
 
   case class PingShardsRequest() derives ProtobufCodec
   case class PingShardsResponse() derives ProtobufCodec

@@ -30,7 +30,7 @@ message SendRequest {
 }
 
 message SendResponse {
-    bytes body = 1;
+    optional bytes body = 1;
 }
 
 message PingShardsRequest {}
