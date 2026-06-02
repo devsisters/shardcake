@@ -1,7 +1,7 @@
 val scala3 = "3.3.7"
 
 val zioVersion            = "2.1.24"
-val zioGrpcVersion        = "0.6.3"
+val proteusVersion        = "0.4.1"
 val grpcNettyVersion      = "1.71.0"
 val zioK8sVersion         = "3.2.0"
 val zioK8sSttpVersion     = "3.11.0"
@@ -41,7 +41,7 @@ inThisBuild(
 
 name := "shardcake"
 addCommandAlias("fmt", "all scalafmtSbt scalafmt test:scalafmt")
-addCommandAlias("check", "all scalafmtSbtCheck scalafmtCheck test:scalafmtCheck")
+addCommandAlias("check", "all scalafmtSbtCheck scalafmtCheck test:scalafmtCheck grpcProtocol/checkProto")
 
 lazy val root = project
   .in(file("."))
@@ -151,25 +151,47 @@ lazy val serializationKryo = project
       )
   )
 
+lazy val generateProto = taskKey[Unit]("Regenerate sharding.proto from the Scala protocol definition.")
+lazy val checkProto    = taskKey[Unit]("Fail if sharding.proto is out of sync with the Scala protocol definition.")
+
 lazy val grpcProtocol = project
   .in(file("protocol-grpc"))
   .settings(name := "shardcake-protocol-grpc")
   .settings(commonSettings)
-  .settings(protobuf: _*)
-  .settings(
-    Compile / PB.targets := Seq(
-      scalapb.gen(grpc = true)          -> (Compile / sourceManaged).value,
-      scalapb.zio_grpc.ZioCodeGenerator -> (Compile / sourceManaged).value
-    )
-  )
   .dependsOn(core, entities)
   .settings(
     libraryDependencies ++= Seq(
-      "com.thesamet.scalapb"          %% "scalapb-runtime"      % scalapb.compiler.Version.scalapbVersion % "protobuf",
-      "com.thesamet.scalapb"          %% "scalapb-runtime-grpc" % scalapb.compiler.Version.scalapbVersion,
-      "com.thesamet.scalapb.zio-grpc" %% "zio-grpc-core"        % zioGrpcVersion,
-      "io.grpc"                        % "grpc-netty"           % grpcNettyVersion
-    )
+      "com.github.ghostdogpr" %% "proteus-grpc"     % proteusVersion,
+      "com.github.ghostdogpr" %% "proteus-grpc-zio" % proteusVersion,
+      "io.grpc"                % "grpc-netty"       % grpcNettyVersion,
+      "io.grpc"                % "grpc-services"    % grpcNettyVersion
+    ),
+    generateProto := {
+      val cp     = (Compile / fullClasspath).value
+      val log    = streams.value.log
+      val output = (Compile / sourceDirectory).value / "protobuf"
+      runner.value
+        .run(
+          "com.devsisters.shardcake.protocol.GenerateProto",
+          cp.files,
+          Seq(output.getAbsolutePath),
+          log
+        )
+        .get
+      log.info(s"Regenerated $output/sharding.proto")
+    },
+    checkProto    := {
+      val log   = streams.value.log
+      val proto = (Compile / sourceDirectory).value / "protobuf" / "sharding.proto"
+      val _     = generateProto.value
+      import scala.sys.process._
+      val diff  = s"git diff --exit-code -- ${proto.getAbsolutePath}".!
+      if (diff != 0) {
+        sys.error(
+          "sharding.proto is out of sync with the Scala protocol definition. Run `sbt grpcProtocol/generateProto` and commit the result."
+        )
+      } else log.info("sharding.proto is in sync.")
+    }
   )
 
 lazy val examples = project
@@ -193,10 +215,6 @@ lazy val benchmarks = project
   .settings(commonSettings)
   .enablePlugins(JmhPlugin)
   .dependsOn(grpcProtocol, serializationKryo)
-
-lazy val protobuf = Seq(
-  PB.protocVersion := "3.19.2"
-) ++ Project.inConfig(Test)(sbtprotoc.ProtocPlugin.protobufConfigSettings)
 
 lazy val commonSettings = Def.settings(
   testFrameworks := Seq(new TestFramework("zio.test.sbt.ZTestFramework")),

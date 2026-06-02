@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit
 @Warmup(iterations = 3, time = 3, timeUnit = TimeUnit.SECONDS)
 @Measurement(iterations = 3, time = 3, timeUnit = TimeUnit.SECONDS)
 @Fork(1)
-class SendBenchmark {
+class SendStreamBenchmark {
   private var fiber: Fiber[Any, Any] = _
 
   @Setup
@@ -24,7 +24,8 @@ class SendBenchmark {
   def tearDown(): Unit =
     Unsafe.unsafe(implicit unsafe => Runtime.default.unsafe.run(fiber.interrupt))
 
+  // 8 parallel server-streams, each receiving 100 messages → 800 messages per op
   @Benchmark
-  def send(): Unit =
-    Unsafe.unsafe(implicit unsafe => Runtime.default.unsafe.run(Client.send(100, 8)))
+  def serverStream(): Unit =
+    Unsafe.unsafe(implicit unsafe => Runtime.default.unsafe.run(Client.sendStream(8, 100, 8)))
 }
