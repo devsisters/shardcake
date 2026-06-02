@@ -54,7 +54,7 @@ class GrpcPods(
               // create a fiber that never ends and keeps the connection alive
               for {
                 _       <- ZIO.logDebug(s"Opening connection to pod $pod")
-                promise <- Promise.make[Nothing, PodClient]
+                promise <- Promise.make[Throwable, PodClient]
                 fiber   <- ZIO
                              .scoped[Any] {
                                acquireChannel.flatMap { rawChannel =>
@@ -62,10 +62,11 @@ class GrpcPods(
                                    if (config.clientInterceptors.isEmpty) rawChannel
                                    else ClientInterceptors.intercept(rawChannel, config.clientInterceptors*)
                                  val backend = ZioClientBackend(channel, config.streamingPrefetch)
-                                 val client  = PodClient.from(rawChannel, backend)
+                                 val client  = PodClient.from(backend)
                                  promise.succeed(client) *> ZIO.never
                                }
                              }
+                             .onError(promise.failCause(_))
                              .ensuring(
                                connections.update(_ - pod) *> ZIO.logDebug(s"Closed connection to pod $pod")
                              )
