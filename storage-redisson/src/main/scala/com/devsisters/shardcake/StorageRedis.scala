@@ -1,6 +1,5 @@
 package com.devsisters.shardcake
 
-import scala.collection.compat._
 import scala.jdk.CollectionConverters._
 
 import com.devsisters.shardcake.interfaces.Storage

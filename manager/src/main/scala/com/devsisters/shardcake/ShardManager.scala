@@ -9,7 +9,6 @@ import zio._
 import zio.stream.ZStream
 
 import scala.annotation.tailrec
-import scala.collection.compat._
 
 /**
  * A component in charge of assigning and unassigning shards to/from pods
@@ -297,7 +296,7 @@ object ShardManager {
                                        ZIO.whenDiscard(failedAssignments.nonEmpty)(
                                          ZIO.logWarning(
                                            s"Ignoring assignments for pods that are no longer alive for role ${role.name}: ${failedAssignments
-                                             .mkString("[", ", ", "]")}"
+                                               .mkString("[", ", ", "]")}"
                                          )
                                        )
                                      _                    <-
@@ -491,7 +490,7 @@ object ShardManager {
           // don't assign too many shards to the same pods, unless we need rebalance immediately
           .filter { case (podAddress, _) =>
             rebalanceImmediately ||
-              assignments.count { case (_, p) => p == podAddress } < state.shards.size * rebalanceRate
+            assignments.count { case (_, p) => p == podAddress } < state.shards.size * rebalanceRate
           }
           // don't assign to a pod that was unassigned in the same rebalance
           .filterNot { case (podAddress, _) => unassignedPods.contains(podAddress) }

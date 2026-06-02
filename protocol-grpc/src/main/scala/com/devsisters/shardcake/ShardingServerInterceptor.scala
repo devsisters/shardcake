@@ -72,10 +72,8 @@ object ShardingServerInterceptor {
             io: GrpcContext => UnaryEffect[Resp]
           ): Req => GrpcContext => UnaryEffect[Resp] =
             interceptors.foldRight(((_: Req) => io): Req => GrpcContext => UnaryEffect[Resp]) { (i, acc) => req =>
-              {
-                val applied: Req => GrpcContext => UnaryEffect[Resp] = i.unary[Req, Resp](acc(req))
-                applied(req)
-              }
+              val applied: Req => GrpcContext => UnaryEffect[Resp] = i.unary[Req, Resp](acc(req))
+              applied(req)
             }
 
           def clientStreaming[Req: ProtobufCodec, Resp: ProtobufCodec](
@@ -90,10 +88,8 @@ object ShardingServerInterceptor {
             io: GrpcContext => StreamEffect[Resp]
           ): Req => GrpcContext => StreamEffect[Resp] =
             interceptors.foldRight(((_: Req) => io): Req => GrpcContext => StreamEffect[Resp]) { (i, acc) => req =>
-              {
-                val applied: Req => GrpcContext => StreamEffect[Resp] = i.serverStreaming[Req, Resp](acc(req))
-                applied(req)
-              }
+              val applied: Req => GrpcContext => StreamEffect[Resp] = i.serverStreaming[Req, Resp](acc(req))
+              applied(req)
             }
 
           def bidiStreaming[Req: ProtobufCodec, Resp: ProtobufCodec](

@@ -22,7 +22,7 @@ abstract class GrpcShardingService(sharding: Sharding, timeout: Duration) {
   def send(request: SendRequest): ZIO[Any, StatusException, SendResponse] =
     sharding
       .sendToLocalEntity(GrpcShardingService.toBinary(request))
-      .map(GrpcShardingService.toSendResponse)
+      .map(SendResponse(_))
       .mapError(GrpcShardingService.mapErrorToStatus)
       .timeoutFail(GrpcShardingService.timeoutException)(timeout)
 
@@ -31,13 +31,13 @@ abstract class GrpcShardingService(sharding: Sharding, timeout: Duration) {
   ): ZIO[Any, StatusException, SendResponse] =
     sharding
       .sendStreamToLocalEntity(requests.map(GrpcShardingService.toBinary))
-      .map(GrpcShardingService.toSendResponse)
+      .map(SendResponse(_))
       .mapError(GrpcShardingService.mapErrorToStatus)
 
   def sendAndReceiveStream(request: SendRequest): ZStream[Any, StatusException, SendResponse] =
     sharding
       .sendToLocalEntityAndReceiveStream(GrpcShardingService.toBinary(request))
-      .map(SendResponse(_))
+      .map(bytes => SendResponse(Some(bytes)))
       .mapError(GrpcShardingService.mapErrorToStatus)
 
   def sendStreamAndReceiveStream(
@@ -45,7 +45,7 @@ abstract class GrpcShardingService(sharding: Sharding, timeout: Duration) {
   ): ZStream[Any, StatusException, SendResponse] =
     sharding
       .sendStreamToLocalEntityAndReceiveStream(requests.map(GrpcShardingService.toBinary))
-      .map(SendResponse(_))
+      .map(bytes => SendResponse(Some(bytes)))
       .mapError(GrpcShardingService.mapErrorToStatus)
 
   def pingShards(request: PingShardsRequest): ZIO[Any, StatusException, PingShardsResponse] =
@@ -57,13 +57,8 @@ object GrpcShardingService {
   private[shardcake] val timeoutException: StatusException =
     Status.ABORTED.withDescription("Timeout while handling sharding send grpc").asException()
 
-  private val emptySendResponse: SendResponse = SendResponse(Array.emptyByteArray)
-
   private[shardcake] def toBinary(req: SendRequest): BinaryMessage =
     BinaryMessage(req.entityId, req.entityType, req.body, req.replyId)
-
-  private[shardcake] def toSendResponse(body: Option[Array[Byte]]): SendResponse =
-    body.fold(emptySendResponse)(SendResponse(_))
 
   private[shardcake] val mapErrorToStatus: Throwable => StatusException = {
     case e: StatusException           => e

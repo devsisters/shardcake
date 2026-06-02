@@ -14,7 +14,6 @@ val redis4catsVersion     = "2.0.1"
 val redissonVersion       = "3.45.1"
 val scalaKryoVersion      = "1.4.0"
 val testContainersVersion = "0.44.1"
-val scalaCompatVersion    = "2.13.0"
 
 inThisBuild(
   List(
@@ -54,6 +53,7 @@ lazy val root = project
     storageRedis,
     storageRedisson,
     serializationKryo,
+    serializationProteus,
     grpcProtocol,
     examples,
     benchmarks
@@ -66,10 +66,9 @@ lazy val core = project
   .settings(
     libraryDependencies ++=
       Seq(
-        "dev.zio"                %% "zio"                     % zioVersion,
-        "dev.zio"                %% "zio-streams"             % zioVersion,
-        "dev.zio"                %% "zio-json"                % zioJsonVersion,
-        "org.scala-lang.modules" %% "scala-collection-compat" % scalaCompatVersion
+        "dev.zio" %% "zio"         % zioVersion,
+        "dev.zio" %% "zio-streams" % zioVersion,
+        "dev.zio" %% "zio-json"    % zioJsonVersion
       )
   )
 
@@ -143,7 +142,7 @@ lazy val serializationKryo = project
   .in(file("serialization-kryo"))
   .settings(name := "shardcake-serialization-kryo")
   .settings(commonSettings)
-  .dependsOn(core)
+  .dependsOn(entities)
   .settings(
     libraryDependencies ++=
       Seq(
@@ -153,6 +152,18 @@ lazy val serializationKryo = project
 
 lazy val generateProto = taskKey[Unit]("Regenerate sharding.proto from the Scala protocol definition.")
 lazy val checkProto    = taskKey[Unit]("Fail if sharding.proto is out of sync with the Scala protocol definition.")
+
+lazy val serializationProteus = project
+  .in(file("serialization-proteus"))
+  .settings(name := "shardcake-serialization-proteus")
+  .settings(commonSettings)
+  .dependsOn(entities)
+  .settings(
+    libraryDependencies ++=
+      Seq(
+        "com.github.ghostdogpr" %% "proteus-core" % proteusVersion
+      )
+  )
 
 lazy val grpcProtocol = project
   .in(file("protocol-grpc"))

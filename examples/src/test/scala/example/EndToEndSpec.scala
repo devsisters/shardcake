@@ -96,7 +96,6 @@ object EndToEndSpec extends ZIOSpecDefault {
       }
     ).provideShared(
       Sharding.live,
-      KryoSerialization.live,
       GrpcPods.live,
       ShardManagerClient.liveWithSttp,
       StorageRedis.live,

@@ -102,31 +102,95 @@ You can then simply use the `GrpcPods.live` layer.
 
 On pods, you also need expose the gRPC API. This is done by adding the `GrpcShardingService.live` layer to your environment. You don't need this one on the Shard Manager.
 
-## Serialization
+## Message Codec
 
-The `Serialization` trait defines how to serialize user messages that will be sent between pods.
-It contains 2 methods `encode` and `decode` that define how to transform a give type from and to bytes.
+The `MessageCodec[Msg]` type class defines how a specific message type is encoded for transport between pods and how its replies are encoded and decoded.
 
 ```scala
-trait Serialization {
-  def encode(message: Any): Task[Array[Byte]]
-  def decode[A](bytes: Array[Byte]): Task[A]
+trait MessageCodec[Msg] {
+  def encodeMessage(message: Msg): Array[Byte]
+  def decodeMessage(bytes: Array[Byte]): Msg
+  def replyEncoder(decoded: Msg): Any => Array[Byte]
+  def replyDecoder[Res](sample: Msg): Array[Byte] => Res
+  def streamReplyDecoder[Res](sample: Msg): Array[Byte] => Res
 }
 ```
-For testing, you can use the `Serialization.javaSerialization` layer that uses Java Serialization (not recommended in production).
 
-Shardcake provides an implementation of `Serialization` using the [Kryo](https://github.com/EsotericSoftware/kryo) binary serialization library. To use it, add the following dependency:
+`RecipientType[Msg]` (the parent of `EntityType[Msg]` and `TopicType[Msg]`) requires a given `MessageCodec[Msg]` at the declaration site.
+
+The expected pattern is to import a backend's package-level given right where the type is declared:
+
+```scala
+import com.devsisters.shardcake.kryo.given
+
+object Guild extends EntityType[GuildMessage]("guild")
+```
+
+Different entity / topic types can use different backends side by side — just import the right given in each declaration site.
+
+### Java serialization (tests only)
+
+Bundled with `shardcake-entities`, intended for tests and examples. Not recommended for production.
+
+```scala
+import com.devsisters.shardcake.javaSerialization.given
+
+object Guild extends EntityType[GuildMessage]("guild")
+```
+
+### Kryo
+
+Uses the [Kryo](https://github.com/EsotericSoftware/kryo) binary serialization library via altoo's [`scala-kryo-serialization`](https://github.com/altoo-ag/scala-kryo-serialization).
+Reflective — no derivation, no compile-time constraints on the message type. The given covers every type uniformly.
+
 ```scala
 libraryDependencies += "com.devsisters" %% "shardcake-serialization-kryo" % "2.7.1"
 ```
-You can then simply use the `KryoSerialization.live` layer.
+
+```scala
+import com.devsisters.shardcake.EntityType
+import com.devsisters.shardcake.kryo.given
+
+object Guild extends EntityType[GuildMessage]("guild")
+```
+
+For a custom Kryo configuration (extra registered serializers, references off, etc.), define your own given instead of importing `com.devsisters.shardcake.kryo.given`.
+
+```scala
+import com.devsisters.shardcake.EntityType
+import com.devsisters.shardcake.kryo.KryoMessageCodec
+import com.devsisters.shardcake.interfaces.MessageCodec
+import com.typesafe.config.ConfigFactory
+
+given [Msg]: MessageCodec[Msg] = KryoMessageCodec.fromConfig[Msg](ConfigFactory.load("my-kryo.conf"))
+
+object Guild extends EntityType[GuildMessage]("guild")
+```
+
+### Proteus
+
+Uses [Proteus](https://github.com/ghostdogpr/proteus) (macro-derived, protobuf-compatible wire format).
+The codec is derived per message type at compile time. Message types must be a case class, sealed trait, or enum at the root — bare primitives (`Int`, `String`, …) need to be wrapped in a case class.
+
+```scala
+libraryDependencies += "com.devsisters" %% "shardcake-serialization-proteus" % "2.7.1"
+```
+
+```scala
+import com.devsisters.shardcake.proteus.given
+
+object Guild extends EntityType[GuildMessage]("guild")
+```
+
+The Proteus given will pick up any in-scope `ProtobufCodec[T]` you've declared (e.g. via `derives proteus.ProtobufCodec` on your types) before falling back to deriving one — useful if you want to register custom field codecs.
+
+Proteus also offers protobuf's forward/backward compatibility rules, which makes it a good choice when you need to do rolling updates that change the message format.
 
 ::: tip Server updates and message versioning
-- Messages are not persisted, which means that if you stop and restart the whole system, you can change anything in the messages format.
-- On the other hand, if you wish to do rolling updates (update servers progressively without downtime), you need to be careful with changes in the messages format.
-- What you can do largely depends on your serialization mechanism, some solutions allow changes while some others are very restrictive.
-  [Kryo](https://github.com/EsotericSoftware/kryo) by default is pretty strict and won't support most changes, but there are settings to support more (at the cost of some performance or message size).
-- When you can't modify existing messages, an option is to create new messages that won't be used until the rolling update is finished (so you won't have cases where old nodes receive new messages).
+- Messages are not persisted, which means that if you stop and restart the whole system, you can change anything in the message format.
+- On the other hand, if you wish to do rolling updates (update servers progressively without downtime), you need to be careful with changes in the message format.
+- What you can do largely depends on the backend you choose. [Kryo](https://github.com/EsotericSoftware/kryo) is reflective and pretty strict by default — most changes will break the wire format. Proteus uses protobuf's evolution rules, so adding optional fields or new variants is safe.
+- When you can't modify an existing message, the usual fallback is to introduce a new message type that won't be used until the rolling update is finished (so old nodes never receive new messages).
 :::
 
 ## Health
@@ -147,5 +211,5 @@ libraryDependencies += "com.devsisters" %% "shardcake-health-k8s" % "2.7.1"
 You can then simply use the `K8sPodsHealth.live` layer. This is requiring a `Pods` layer that comes from [zio-k8s](https://coralogix.github.io/zio-k8s/docs/overview/overview_gettingstarted).
 
 ::: tip Examples
-Check the [examples](https://github.com/devsisters/shardcake/tree/series/3.x/examples/src/main/scala/example/complex) folder that contains a full example using Redis, gRPC and Kryo seralization.
+Check the [examples](https://github.com/devsisters/shardcake/tree/series/3.x/examples/src/main/scala/example/complex) folder that contains a full example using Redis, gRPC and the Kryo message codec.
 :::

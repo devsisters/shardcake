@@ -11,7 +11,7 @@ private[shardcake] trait EntityManager[-Req] {
     entityId: String,
     req: Req,
     replyId: Option[String],
-    replyChannel: ReplyChannel[Nothing]
+    pendingReply: Option[PendingReply]
   ): IO[EntityNotManagedByThisPod, Unit]
   def terminateEntity(entityId: String): UIO[Unit]
   def terminateEntitiesOnShards(shards: Set[ShardId]): UIO[Unit]
@@ -104,7 +104,7 @@ private[shardcake] object EntityManager {
       entityId: String,
       req: Req,
       replyId: Option[String],
-      replyChannel: ReplyChannel[Nothing]
+      pendingReply: Option[PendingReply]
     ): IO[EntityNotManagedByThisPod, Unit] =
       for {
         // first, verify that this entity should be handled by this pod
@@ -119,16 +119,16 @@ private[shardcake] object EntityManager {
         map <- entities.get
         _   <- map.get(entityId) match {
                  case Some(Left(queue))        =>
-                   offerToQueue(entityId, queue, req, replyId, replyChannel)
+                   offerToQueue(entityId, queue, req, replyId, pendingReply)
                  case None if !loadEntity(req) =>
-                   replyChannel.end
+                   pendingReply.fold[UIO[Unit]](ZIO.unit)(_.end)
                  case _                        =>
                    getOrCreateQueue(entityId).flatMap {
                      case Right(_)    =>
                        // the queue is shutting down, try again a little later
-                       Clock.sleep(100 millis) *> send(entityId, req, replyId, replyChannel)
+                       Clock.sleep(100 millis) *> send(entityId, req, replyId, pendingReply)
                      case Left(queue) =>
-                       offerToQueue(entityId, queue, req, replyId, replyChannel)
+                       offerToQueue(entityId, queue, req, replyId, pendingReply)
                    }
                }
       } yield ()
@@ -138,14 +138,16 @@ private[shardcake] object EntityManager {
       queue: Queue[Req],
       req: Req,
       replyId: Option[String],
-      replyChannel: ReplyChannel[Nothing]
+      pendingReply: Option[PendingReply]
     ): IO[EntityNotManagedByThisPod, Unit] =
       currentTimeInMilliseconds.flatMap(cdt => entitiesLastReceivedAt.update(_ + (entityId -> cdt))) *>
         // add the message to the queue and setup the reply channel if needed
-        (replyId match {
-          case Some(replyId) => sharding.initReply(replyId, replyChannel) <* queue.offer(req)
-          case None          => queue.offer(req) *> replyChannel.end
-        }).catchAllCause(_ => Clock.sleep(100 millis) *> send(entityId, req, replyId, replyChannel))
+        ((replyId, pendingReply) match {
+          case (Some(replyId), Some(pr)) => sharding.initReply(replyId, pr) <* queue.offer(req)
+          case (None, Some(pr))          => queue.offer(req) *> pr.end
+          // stream continuation: reply is already set up on a prior message — just enqueue
+          case (_, None)                 => queue.offer(req).unit
+        }).catchAllCause(_ => Clock.sleep(100 millis) *> send(entityId, req, replyId, pendingReply))
 
     private def getOrCreateQueue(entityId: String): IO[EntityNotManagedByThisPod, Either[Queue[Req], Signal]] =
       entities.modifyZIO(map =>

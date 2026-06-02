@@ -1,7 +1,5 @@
 package com.devsisters.shardcake
 
-import scala.collection.compat._
-
 import zio.json._
 
 case class PodAddress(host: String, port: Int) {

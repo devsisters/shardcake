@@ -26,7 +26,7 @@ class GrpcPods(
           map.get(pod) match {
             case Some((client, _)) => ZIO.succeed((client, map))
             case None              =>
-              val builder = {
+              val builder =
                 config.executor match {
                   case Some(executor) =>
                     ManagedChannelBuilder
@@ -40,7 +40,6 @@ class GrpcPods(
                       .maxInboundMessageSize(config.maxInboundMessageSize)
                       .usePlaintext()
                 }
-              }
 
               val acquireChannel: RIO[Scope, ManagedChannel] =
                 ZIO.acquireRelease(ZIO.attempt(builder.build())) { channel =>
@@ -106,7 +105,7 @@ class GrpcPods(
         .send(toSendRequest(message))
         .mapBoth(
           mapClientError(pod, message.entityId, isStream = false),
-          res => if (res.body.isEmpty) None else Some(res.body)
+          _.body
         )
     }
 
@@ -120,7 +119,7 @@ class GrpcPods(
         .sendStream(messages.mapBoth(Status.INTERNAL.withCause(_).asException(), toSendRequest))
         .mapBoth(
           mapClientError(pod, entityId, isStream = true),
-          res => if (res.body.isEmpty) None else Some(res.body)
+          _.body
         )
     }
 
@@ -129,7 +128,7 @@ class GrpcPods(
       .fromZIO(getConnection(pod))
       .flatMap(
         _.sendAndReceiveStream(toSendRequest(message))
-          .mapBoth(mapClientError(pod, message.entityId, isStream = true), _.body)
+          .mapBoth(mapClientError(pod, message.entityId, isStream = true), _.body.getOrElse(Array.emptyByteArray))
       )
 
   def sendStreamAndReceiveStream(
@@ -142,7 +141,7 @@ class GrpcPods(
       .flatMap(
         _.sendStreamAndReceiveStream(
           messages.mapBoth(Status.INTERNAL.withCause(_).asException(), toSendRequest)
-        ).mapBoth(mapClientError(pod, entityId, isStream = true), _.body)
+        ).mapBoth(mapClientError(pod, entityId, isStream = true), _.body.getOrElse(Array.emptyByteArray))
       )
 }
 

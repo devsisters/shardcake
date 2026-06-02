@@ -26,7 +26,6 @@ object GuildApp extends ZIOAppDefault {
       .provide(
         ZLayer.succeed(Config.default),
         ZLayer.succeed(GrpcConfig.default),
-        Serialization.javaSerialization,
         Storage.memory,
         ShardManagerClient.liveWithSttp,
         GrpcPods.live,

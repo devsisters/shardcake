@@ -101,7 +101,7 @@ private[shardcake] object GraphQLClient {
       encoder0: ArgEncoder[PodAddressInput],
       encoder1: ArgEncoder[String],
       encoder2: ArgEncoder[RoleInput]
-    ): SelectionBuilder[_root_.caliban.client.Operations.RootMutation, scala.Option[Unit]] =
+    ): SelectionBuilder[_root_.caliban.client.Operations.RootMutation, scala.Option[Unit]]        =
       _root_.caliban.client.SelectionBuilder.Field(
         "register",
         OptionOf(Scalar()),
@@ -113,7 +113,7 @@ private[shardcake] object GraphQLClient {
       )
     def unregister(podAddress: PodAddressInput)(implicit
       encoder0: ArgEncoder[PodAddressInput]
-    ): SelectionBuilder[_root_.caliban.client.Operations.RootMutation, scala.Option[Unit]] =
+    ): SelectionBuilder[_root_.caliban.client.Operations.RootMutation, scala.Option[Unit]]        =
       _root_.caliban.client.SelectionBuilder.Field(
         "unregister",
         OptionOf(Scalar()),
@@ -121,7 +121,7 @@ private[shardcake] object GraphQLClient {
       )
     def notifyUnhealthyPod(podAddress: PodAddressInput)(implicit
       encoder0: ArgEncoder[PodAddressInput]
-    ): SelectionBuilder[_root_.caliban.client.Operations.RootMutation, Unit] =
+    ): SelectionBuilder[_root_.caliban.client.Operations.RootMutation, Unit]                      =
       _root_.caliban.client.SelectionBuilder.Field(
         "notifyUnhealthyPod",
         Scalar(),

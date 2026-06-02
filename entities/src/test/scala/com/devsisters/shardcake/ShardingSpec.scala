@@ -2,7 +2,8 @@ package com.devsisters.shardcake
 
 import com.devsisters.shardcake.CounterActor.CounterMessage._
 import com.devsisters.shardcake.CounterActor._
-import com.devsisters.shardcake.interfaces.{ Serialization, Storage }
+import com.devsisters.shardcake.interfaces.Storage
+import com.devsisters.shardcake.javaSerialization.given
 import zio.stream.{ SubscriptionRef, ZStream }
 import zio.test.TestAspect.{ sequential, withLiveClock }
 import zio.test._
@@ -71,7 +72,7 @@ object ShardingSpec extends ZIOSpecDefault {
             _       <- counter.sendDiscard("c3")(IncrementCounter)
             c0      <- counter.send("c3")(GetCounter.apply)
             _       <- Clock.sleep(3 seconds)
-            c1 <- counter.send("c3")(GetCounter.apply) // counter should be restarted
+            c1      <- counter.send("c3")(GetCounter.apply) // counter should be restarted
           } yield assertTrue(c0 == 1, c1 == 0)
         }
       },
@@ -84,7 +85,7 @@ object ShardingSpec extends ZIOSpecDefault {
             _       <- counter.sendDiscard("c3")(IncrementCounter)
             c0      <- counter.send("c3")(GetCounter.apply)
             _       <- counter.send("c3")(TriggerTerminate.apply)
-            c1 <- counter.send("c3")(GetCounter.apply) // counter should be restarted
+            c1      <- counter.send("c3")(GetCounter.apply) // counter should be restarted
           } yield assertTrue(c0 == 1, c1 == 0)
         }
       },
@@ -100,7 +101,7 @@ object ShardingSpec extends ZIOSpecDefault {
             _       <- counter.sendDiscard("c3")(IncrementCounter)
             c1      <- counter.send("c3")(GetCounter.apply)
             _       <- Clock.sleep(4 seconds)
-            c2 <- counter.send("c3")(GetCounter.apply) // counter should be restarted
+            c2      <- counter.send("c3")(GetCounter.apply) // counter should be restarted
           } yield assertTrue(c0 == 1, c1 == 2, c2 == 0)
         }
       },
@@ -131,8 +132,9 @@ object ShardingSpec extends ZIOSpecDefault {
             _       <- Sharding.registerEntity(Counter, behavior)
             _       <- Sharding.registerScoped
             counter <- Sharding.messenger(Counter)
-            stream  <- counter.sendStreamAndReceiveStream[Int]("c1")(replier =>
-                         ZStream.succeed(StreamingChanges(replier)) ++ ZStream.fromIterable(1 to 5).as(IncrementCounter)
+            stream  <- counter.sendStreamAndReceiveStream[Int]("c1")(
+                         StreamingChanges.apply,
+                         ZStream.fromIterable(1 to 5).as(IncrementCounter)
                        )
             latch   <- Promise.make[Nothing, Unit]
             fiber   <- stream.take(5).tap(_ => latch.succeed(())).runCollect.fork
@@ -144,7 +146,6 @@ object ShardingSpec extends ZIOSpecDefault {
         }
       }
     ).provideShared(
-      Serialization.javaSerialization,
       LocalSharding.live,
       ShardManagerClient.local,
       Storage.memory,
