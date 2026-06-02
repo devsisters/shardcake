@@ -154,14 +154,17 @@ import com.devsisters.shardcake.kryo.given
 object Guild extends EntityType[GuildMessage]("guild")
 ```
 
-For a custom Kryo configuration (extra registered serializers, references off, etc.), shadow the package given with your own:
+For a custom Kryo configuration (extra registered serializers, references off, etc.), define your own given instead of importing `com.devsisters.shardcake.kryo.given`.
 
 ```scala
+import com.devsisters.shardcake.EntityType
 import com.devsisters.shardcake.kryo.KryoMessageCodec
 import com.devsisters.shardcake.interfaces.MessageCodec
 import com.typesafe.config.ConfigFactory
 
 given [Msg]: MessageCodec[Msg] = KryoMessageCodec.fromConfig[Msg](ConfigFactory.load("my-kryo.conf"))
+
+object Guild extends EntityType[GuildMessage]("guild")
 ```
 
 ### Proteus

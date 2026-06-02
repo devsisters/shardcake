@@ -9,7 +9,6 @@ import zio._
 import zio.stream.ZStream
 
 import scala.annotation.tailrec
-import scala.collection.compat._
 
 /**
  * A component in charge of assigning and unassigning shards to/from pods
