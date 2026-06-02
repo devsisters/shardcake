@@ -11,13 +11,18 @@ object Server {
   sealed trait Message
 
   object Message {
-    case class Ping(msg: String, replier: Replier[String]) extends Message
+    case class Ping(msg: String, replier: Replier[String])                         extends Message
+    case class StreamPing(msg: String, count: Int, replier: StreamReplier[String]) extends Message
   }
 
   object PingPongEntity extends EntityType[Message]("ping-pong")
 
   private def behavior(entityId: String, messages: Dequeue[Message]): RIO[Sharding, Nothing] =
-    messages.take.flatMap { case Message.Ping(msg, replier) => replier.reply(msg) }.forever
+    messages.take.flatMap {
+      case Message.Ping(msg, replier)              => replier.reply(msg)
+      case Message.StreamPing(msg, count, replier) =>
+        replier.replyStream(zio.stream.ZStream.repeat(msg).take(count.toLong))
+    }.forever
 
   private val shardManagerClient: ZLayer[Config, Nothing, ShardManagerClient] =
     ZLayer {

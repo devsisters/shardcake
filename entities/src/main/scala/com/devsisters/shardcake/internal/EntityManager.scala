@@ -165,23 +165,23 @@ private[shardcake] object EntityManager {
                 ZIO.fail(EntityNotManagedByThisPod(entityId))
               case false =>
                 // queue doesn't exist, create a new one
-                for {
-                  queue           <- Queue.unbounded[Req]
-                  // start the expiration fiber
-                  expirationFiber <- startExpirationFiber(entityId)
-                  _               <- gauge.increment
-                  _               <- behavior(entityId, queue)
-                                       .ensuring(
-                                         // shutdown the queue when the fiber ends
-                                         entities.update(_ - entityId) *>
-                                           gauge.decrement *>
-                                           entitiesLastReceivedAt.update(_ - entityId) *>
-                                           queue.shutdown *>
-                                           expirationFiber.interrupt
-                                       )
-                                       .forkDaemon
-                  leftQueue        = Left(queue)
-                } yield (leftQueue, map.updated(entityId, leftQueue))
+                Queue.unbounded[Req].flatMap { queue =>
+                  val leftQueue = Left(queue)
+                  (for {
+                    // start the expiration fiber
+                    expirationFiber <- startExpirationFiber(entityId)
+                    _               <- gauge.increment
+                    _               <- behavior(entityId, queue)
+                                         .ensuring(
+                                           // shutdown the queue when the fiber ends
+                                           entities.update(_ - entityId) *>
+                                             gauge.decrement *>
+                                             entitiesLastReceivedAt.update(_ - entityId) *>
+                                             queue.shutdown *>
+                                             expirationFiber.interrupt
+                                         )
+                  } yield ()).forkDaemon.as((leftQueue, map.updated(entityId, leftQueue)))
+                }
             }
         }
       )

@@ -1,7 +1,5 @@
 syntax = "proto3";
 
-option java_package = "com.devsisters.shardcake.protobuf";
-
 service ShardingService {
     rpc AssignShards (AssignShardsRequest) returns (AssignShardsResponse) {}
     rpc UnassignShards (UnassignShardsRequest) returns (UnassignShardsResponse) {}
